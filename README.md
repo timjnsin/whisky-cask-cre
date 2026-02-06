@@ -2,7 +2,7 @@
 
 Bonded warehouses maintain federally regulated custody records for every whisky cask: existence, type, age, gauge readings, and lifecycle events. Today that data is locked in warehouse management systems, emailed as PDFs, and arrives weeks late. Investors, lending protocols, and secondary markets have no way to independently verify what they're told.
 
-This project uses Chainlink CRE to pipe verified warehouse data onchain in real time. Proof of reserve. Physical attributes. Lifecycle provenance. With a privacy layer so warehouses can participate without exposing commercially sensitive inventory data.
+This project uses Chainlink CRE to pipe verified warehouse data onchain on a near-real-time cadence. Proof of reserve. Physical attributes. Lifecycle provenance. With a privacy layer so warehouses can participate without exposing commercially sensitive inventory data.
 
 We don't tell you what a cask is worth. We give you the verified facts to decide for yourself.
 
@@ -46,7 +46,7 @@ Webhook payload  ----------> Consensus on state            LifecycleTransition e
 
 ### 1. Proof of Reserve (hourly cron)
 
-Fetches warehouse inventory count, reads `totalMinted()` from the contract, computes reserve ratio, writes attestation onchain. In confidential mode, only a boolean `isFullyReserved` is published -- the actual inventory count never appears onchain or in node logs.
+Fetches warehouse inventory count, reads `totalMinted()` from the contract, computes reserve ratio, writes attestation onchain. In confidential mode, only a boolean `isFullyReserved` is published onchain (the raw inventory count is not included in the onchain report payload).
 
 ### 2. Physical Attribute Oracle (daily cron)
 
@@ -66,7 +66,7 @@ A warehouse's aggregate inventory is commercially sensitive. It reveals:
 
 TTB tracks the proprietor (DSP number), not the beneficial token holder. Privacy protects the warehouse operator's business data, not investor anonymity.
 
-Confidential HTTP enables the proof-of-reserve workflow to attest "casks >= tokens" without revealing the actual count to anyone -- not DON node operators, not onchain observers, not competitors.
+Confidential HTTP enables the proof-of-reserve workflow to attest "casks >= tokens" without revealing the actual count onchain. In production, node-side logging should also be configured to avoid emitting sensitive raw counts.
 
 ## Data Honesty
 
@@ -118,6 +118,8 @@ To run through the CRE CLI (requires `cre` installed):
 ```bash
 cre workflow simulate workflows/proof-of-reserve -T staging-settings --non-interactive --trigger-index 0
 ```
+
+By default, local/staging configs run in safe simulation mode (`submitReports: false`) and do not broadcast onchain transactions.
 
 To compile and test the Solidity contract (requires `forge`):
 
@@ -174,6 +176,11 @@ project.yaml                       CRE project settings (RPC endpoints)
 - **Not a valuation oracle.** We put verified physical facts onchain. Valuation is a model output, not a measurement, and we label it accordingly.
 - **Not trustless end-to-end.** The system trusts TTB-regulated warehouses to report accurately (falsifying federal records is a criminal offense). CRE decentralizes the *pipeline*, not the *source*.
 - **Not whisky-specific.** Whisky casks are the demo asset. The pattern (privacy-preserving proof of reserve for physically-held assets via CRE) generalizes to wine, art, precious metals, or any custodied commodity with regulated record-keeping.
+
+## Known Limitations (Current Demo)
+
+- **Lifecycle reconcile submits one event per run.** The daily fallback currently submits the latest event only, not a full backlog replay.
+- **Lifecycle event dedup is workflow-level.** Webhook and reconcile paths can emit the same transition twice; contract state remains idempotent, but duplicate events may appear in logs.
 
 ## Hackathon Context
 
