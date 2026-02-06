@@ -1,0 +1,15 @@
+staging-settings:
+  user-workflow:
+    workflow-name: 'lifecycle-webhook-staging'
+  workflow-artifacts:
+    workflow-path: './index.ts'
+    config-path: './config.staging.json'
+    secrets-path: ''
+
+production-settings:
+  user-workflow:
+    workflow-name: 'lifecycle-webhook-production'
+  workflow-artifacts:
+    workflow-path: './index.ts'
+    config-path: './config.production.json'
+    secrets-path: ''

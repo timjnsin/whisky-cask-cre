@@ -25,12 +25,9 @@ const configSchema = baseCreConfigSchema.extend({
 type WorkflowConfig = z.infer<typeof configSchema>;
 
 function buildBatchPath(targetIds: number[], maxBatchSize: number): string {
-  const params = new URLSearchParams();
-  params.set("limit", String(maxBatchSize));
-  if (targetIds.length > 0) {
-    params.set("ids", targetIds.join(","));
-  }
-  return `/casks/batch?${params.toString()}`;
+  const query: string[] = [`limit=${encodeURIComponent(String(maxBatchSize))}`];
+  if (targetIds.length > 0) query.push(`ids=${targetIds.join(",")}`);
+  return `/casks/batch?${query.join("&")}`;
 }
 
 async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {

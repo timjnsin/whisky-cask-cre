@@ -5,3 +5,8 @@ dist/
 coverage/
 *.log
 api/data/portfolio.json
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+workflows/*/tmp.js
+workflows/*/tmp.wasm

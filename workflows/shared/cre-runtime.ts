@@ -17,7 +17,9 @@ const CHAIN_SELECTOR_ALIASES: Record<string, string> = {
 };
 
 export const baseCreConfigSchema = z.object({
-  apiBaseUrl: z.string().url(),
+  apiBaseUrl: z
+    .string()
+    .regex(/^https?:\/\/[^\s]+$/i, "Invalid URL"),
   contractAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   chainSelector: z.string().min(1),
   tokensPerCask: z.number().int().positive().default(1000),
@@ -260,9 +262,18 @@ export function resolveSnapshotAsOf<TConfig>(
 
 export function withAsOf(path: string, asOf: string): string {
   const [pathname, queryString] = path.split("?", 2);
-  const params = new URLSearchParams(queryString ?? "");
-  params.set("asOf", asOf);
-  return `${pathname}?${params.toString()}`;
+  const pairs: string[] = [];
+  if (queryString) {
+    for (const segment of queryString.split("&")) {
+      if (!segment) continue;
+      const key = segment.split("=", 2)[0];
+      if (key === "asOf") continue;
+      pairs.push(segment);
+    }
+  }
+
+  pairs.push(`asOf=${encodeURIComponent(asOf)}`);
+  return `${pathname}?${pairs.join("&")}`;
 }
 
 function getEvmClient(sdk: CreSdkModule, chainSelectorName: string): {

@@ -1,5 +1,5 @@
-﻿{
-  "apiBaseUrl": "http://localhost:3000",
+{
+  "apiBaseUrl": "http://127.0.0.1:3000",
   "contractAddress": "0x0000000000000000000000000000000000000000",
   "chainSelector": "ethereum-sepolia",
   "tokensPerCask": 1000,
