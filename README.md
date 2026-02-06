@@ -230,7 +230,7 @@ project.yaml                       CRE project settings (RPC endpoints)
 ## Known Limitations (Current Demo)
 
 - **Lifecycle reconcile submits one event per run.** The daily fallback currently submits the latest event only, not a full backlog replay.
-- **Lifecycle event dedup is workflow-level.** Webhook and reconcile paths can emit the same transition twice; contract state remains idempotent, but duplicate events may appear in logs.
+- **Lifecycle dedup is partial.** Contract-level monotonic timestamp checks block same-timestamp replay, but logically equivalent transitions with newer timestamps can still produce duplicate lifecycle logs if submitted twice.
 
 ## Hackathon Context
 
