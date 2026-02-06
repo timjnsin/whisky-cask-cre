@@ -28,7 +28,7 @@ Scotland's Moveable Transactions Act (April 2025) just created statutory pledges
 
 ## What We Built
 
-Three CRE workflows that fetch warehouse data, reach DON consensus, and write verified reports to a Solidity contract. The core capability: **proof of reserve that makes double-selling structurally impossible.**
+Three CRE workflows that fetch warehouse data, reach DON consensus, and write verified reports to a Solidity contract. The core capability: **proof of reserve that makes under-collateralization and double-selling attempts rapidly detectable.**
 
 ```
 Warehouse API                CRE (DON consensus)           Smart Contract
@@ -58,11 +58,11 @@ Fetches warehouse inventory count, reads `totalMinted()` from the contract, comp
 
 ### 2. Physical Attribute Oracle (daily cron)
 
-Fetches per-cask gauge records and angel's share estimates for recently changed casks. Writes batch updates to the contract. Every field maps to a TTB-required measurement: proof gallons, wine gallons, proof, gauge method, gauge date. Any lending protocol or secondary market can read these attributes and build their own risk model -- no need to trust ours.
+Fetches per-cask gauge records and angel's share estimates for recently changed casks. Writes batch updates to the contract. Core gauge fields map to TTB-required measurements: proof gallons, wine gallons, proof, gauge method, gauge date. Any lending protocol or secondary market can read these attributes and build their own risk model -- no need to trust ours.
 
 ### 3. Lifecycle Provenance (webhook + daily fallback)
 
-Records every state transition as an immutable onchain event: `filled -> maturation -> regauged -> transfer -> bottling_ready -> bottled`. Each transition carries gauge data when applicable. The webhook path requires zero HTTP calls (data arrives in the signed trigger payload). A daily cron reconcile catches any missed events. The result is an unbroken chain of custody from fill to bottle.
+Records every state transition as an immutable onchain event: `filled -> maturation -> regauged -> transfer -> bottling_ready -> bottled`. Each transition carries gauge data when applicable. The webhook path requires zero HTTP calls (data arrives in the trigger payload, with signature authorization when keys are configured). A daily cron reconcile catches any missed events. The result is a verifiable lifecycle trail from fill to bottle.
 
 ## Why Privacy Matters
 
@@ -70,7 +70,7 @@ A warehouse's aggregate inventory is commercially sensitive. It reveals total ba
 
 TTB tracks the proprietor (DSP number), not the beneficial token holder. Privacy protects the warehouse operator's business data, not investor anonymity.
 
-Confidential HTTP enables the proof-of-reserve workflow to attest "casks >= tokens" without revealing the actual count onchain. The warehouse participates because its competitive position isn't exposed. Without this, the system is architecturally correct but commercially undeployable.
+Confidential HTTP enables the proof-of-reserve workflow to attest "casks >= tokens" without revealing the actual count onchain. Full confidential transport semantics are pending Chainlink privacy details expected February 12, 2026; current implementation keeps raw inventory counts out of the onchain confidential report payload. The warehouse participates because its competitive position isn't exposed. Without this, the system is architecturally correct but commercially undeployable.
 
 ## What This Enables
 
@@ -234,4 +234,4 @@ project.yaml                       CRE project settings (RPC endpoints)
 
 ## Hackathon Context
 
-Built for the [Chainlink Convergence Hackathon](https://chain.link/convergence) (Feb 6 -- Mar 1, 2026). Primary track: Privacy. The core capability is Confidential HTTP on the proof-of-reserve inventory fetch.
+Built for the [Chainlink Convergence Hackathon](https://chain.link/convergence) (Feb 6 -- Mar 1, 2026). Primary track: Privacy. Confidential HTTP integration for the proof-of-reserve inventory fetch is pending Chainlink privacy details expected February 12, 2026.
