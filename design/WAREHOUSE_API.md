@@ -93,6 +93,10 @@ Cron workflows should also pass `asOf` to:
 
 This ensures all DON nodes evaluate the same snapshot time when using identical consensus aggregation.
 
+Current mock implementation guarantees deterministic responses for the same `asOf` and applies `asOf`
+to time-dependent calculations (estimates, age buckets, recently changed windows, lifecycle recency slices).
+It is not a full historical state replay engine.
+
 ## Seed Portfolio Design
 
 47 casks map proportionally to Brogue's 1,359-barrel inventory. See [MODEL_TO_API_MAP.md](MODEL_TO_API_MAP.md) for source model parameters.

@@ -81,6 +81,8 @@ Deterministic snapshot reads support `?asOf=<ISO-8601>` on:
 - `/cask/:id/estimate`
 - `/cask/:id/reference-valuation`
 
+For the mock data model, `asOf` drives deterministic time-based calculations and windows, not full historical state replay.
+
 Execution budgets are CRE-safe:
 
 - Proof of reserve: `1 HTTP + 1 EVM read + 1 EVM write`

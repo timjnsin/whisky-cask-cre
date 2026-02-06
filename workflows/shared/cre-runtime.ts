@@ -129,11 +129,11 @@ function assertCreSdkModule(module: unknown): asserts module is CreSdkModule {
   const prepareReportRequest = module.prepareReportRequest;
   const getNetwork = module.getNetwork;
 
-  if (!isRecord(runner) || !isRecord(cre)) {
+  if ((typeof runner !== "function" && !isRecord(runner)) || !isRecord(cre)) {
     throw new Error("Invalid @chainlink/cre-sdk export: missing Runner or cre");
   }
 
-  assertHasFunction(runner, "newRunner", "Runner.newRunner");
+  assertHasFunction(runner as Record<string, unknown>, "newRunner", "Runner.newRunner");
   if (typeof sendErrorResponse !== "function") {
     throw new Error("Invalid @chainlink/cre-sdk export: missing sendErrorResponse");
   }
@@ -320,54 +320,6 @@ export function httpGetJson<T, TConfig extends { apiBaseUrl: string }>(
   return parseJson<T>(raw, `GET ${url}`);
 }
 
-export function httpPostJson<
-  TResponse,
-  TBody,
-  TConfig extends {
-    apiBaseUrl: string;
-  },
->(
-  sdk: CreSdkModule,
-  runtime: Pick<CreRuntime<TConfig>, "config" | "runInNodeMode">,
-  path: string,
-  body: TBody,
-): TResponse {
-  const url = buildUrl(runtime.config.apiBaseUrl, path);
-  const bodyText = JSON.stringify(body);
-
-  const raw = runtime
-    .runInNodeMode(
-      (nodeRuntime, requestUrl: string, requestBodyText: string) => {
-        const httpClient = new sdk.cre.capabilities.HTTPClient();
-        const response = httpClient
-          .sendRequest(nodeRuntime, {
-            url: requestUrl,
-            method: "POST",
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json",
-            },
-            // SDK request body is protobuf bytes; JSON transport uses base64 for byte fields.
-            body: Buffer.from(requestBodyText, "utf8").toString("base64"),
-          })
-          .result();
-
-        const responseBody = sdk.text(response);
-        if (!sdk.ok(response)) {
-          throw new Error(
-            `POST ${requestUrl} failed: ${response.statusCode} ${responseBody.slice(0, 200)}`,
-          );
-        }
-
-        return responseBody;
-      },
-      sdk.consensusIdenticalAggregation<string>(),
-    )(url, bodyText)
-    .result();
-
-  return parseJson<TResponse>(raw, `POST ${url}`);
-}
-
 export function resolveTotalTokenSupply(
   sdk: CreSdkModule,
   runtime: Pick<CreRuntime<BaseCreWorkflowConfig>, "config" | "log">,
@@ -471,4 +423,3 @@ export function submitReport(
     txHash: writeResult.txHash ? sdk.bytesToHex(writeResult.txHash) : undefined,
   };
 }
-

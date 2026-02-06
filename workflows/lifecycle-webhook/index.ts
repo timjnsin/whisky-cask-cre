@@ -17,7 +17,6 @@ const lifecycleWebhookPayloadSchema = z.object({
   gaugeProofGallons: z.number().nonnegative().optional(),
   gaugeWineGallons: z.number().nonnegative().optional(),
   gaugeProof: z.number().nonnegative().optional(),
-  reason: z.enum(["regauge", "transfer", "bottling"]).optional(),
   timestamp: z.string().datetime().optional(),
 });
 
@@ -37,7 +36,11 @@ interface HttpTriggerPayload {
 }
 
 function isHttpTriggerPayload(payload: unknown): payload is HttpTriggerPayload {
-  return typeof payload === "object" && payload !== null && "input" in payload;
+  if (typeof payload !== "object" || payload === null || !("input" in payload)) {
+    return false;
+  }
+  const candidate = (payload as { input: unknown }).input;
+  return candidate instanceof Uint8Array;
 }
 
 function parseIncomingPayload(payload: HttpTriggerPayload): z.infer<typeof lifecycleWebhookPayloadSchema> {

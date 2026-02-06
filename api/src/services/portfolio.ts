@@ -43,6 +43,10 @@ function sortLifecycle(events: LifecycleEvent[]): LifecycleEvent[] {
   return [...events].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
 
+function timestampMs(iso: string): number {
+  return new Date(iso).getTime();
+}
+
 export class PortfolioStore {
   private data: PortfolioData | null = null;
   private caskById = new Map<number, CaskRecord>();
@@ -126,9 +130,11 @@ export class PortfolioStore {
 
   getRecentLifecycle(limit: number, asOf: string): RecentLifecycleResponse {
     const maxItems = Math.max(1, Math.min(200, limit));
+    const asOfMs = timestampMs(asOf);
 
     const events = this.getAllCasks()
       .flatMap((cask) => cask.lifecycle)
+      .filter((event) => timestampMs(event.timestamp) <= asOfMs)
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
       .slice(0, maxItems)
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
@@ -157,6 +163,7 @@ export class PortfolioStore {
 
   getSummary(asOf: string): PortfolioSummaryResponse {
     const casks = this.getAllCasks();
+    const asOfMs = timestampMs(asOf);
 
     const ageBuckets = {
       "0_24": 0,
@@ -180,7 +187,8 @@ export class PortfolioStore {
     }
 
     const recentlyChangedCaskIds = casks
-      .filter((cask) => new Date(cask.updatedAt).getTime() >= Date.now() - 1000 * 60 * 60 * 24 * 120)
+      .filter((cask) => timestampMs(cask.updatedAt) <= asOfMs)
+      .filter((cask) => timestampMs(cask.updatedAt) >= asOfMs - 1000 * 60 * 60 * 24 * 120)
       .map((cask) => cask.caskId)
       .sort((a, b) => a - b)
       .slice(0, 20);
