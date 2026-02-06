@@ -1,5 +1,6 @@
 ﻿import { toScaled1, toScaled2 } from "../../api/src/domain/units.js";
 import { loadConfig } from "../shared/config.js";
+import { getCreSdkStatus } from "../shared/cre-sdk.js";
 import { postJson } from "../shared/http.js";
 
 interface LifecyclePostResponse {
@@ -18,6 +19,7 @@ interface LifecyclePostResponse {
 
 async function main() {
   const config = await loadConfig(import.meta.url);
+  const creSdk = getCreSdkStatus();
 
   const caskId = Number(process.env.CASK_ID ?? 7);
   const gaugeProofGallons = Number(process.env.GAUGE_PROOF_GALLONS ?? 46.5);
@@ -52,6 +54,8 @@ async function main() {
   console.log("[lifecycle-webhook] event accepted", response.ok);
   console.log("[lifecycle-webhook] contract payload");
   console.log(JSON.stringify(contractEventPayload, null, 2));
+  console.log("[lifecycle-webhook] httpCalls", 1);
+  console.log("[lifecycle-webhook] cre-sdk", creSdk);
 }
 
 main().catch((error) => {

@@ -26,6 +26,13 @@ interface IWhiskyCaskVault {
         TRANSFER
     }
 
+    enum ReportType {
+        RESERVE_PUBLIC,
+        RESERVE_PRIVATE,
+        CASK_BATCH,
+        LIFECYCLE
+    }
+
     struct CaskAttributes {
         CaskType caskType;
         uint8 spiritType;
@@ -40,7 +47,7 @@ interface IWhiskyCaskVault {
         GaugeMethod lastGaugeMethod;
         uint256 estimatedProofGallons;
         CaskState state;
-        string warehouseId;
+        bytes16 warehouseCode;
     }
 
     struct ReserveAttestationPublic {
@@ -62,6 +69,19 @@ interface IWhiskyCaskVault {
         uint256 caskId;
         CaskAttributes attributes;
     }
+
+    struct LifecycleReport {
+        uint256 caskId;
+        CaskState toState;
+        uint256 timestamp;
+        uint256 gaugeProofGallons;
+        uint256 gaugeWineGallons;
+        uint16 gaugeProof;
+    }
+
+    function onReport(bytes calldata report) external;
+
+    function onReport(bytes calldata metadata, bytes calldata report) external;
 
     function getCaskAttributes(uint256 caskId) external view returns (CaskAttributes memory);
 

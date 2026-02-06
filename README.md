@@ -14,17 +14,18 @@ Implemented in this baseline:
 
 - Mock warehouse API (Hono) with TTB-native units (proof gallons, wine gallons, proof)
 - Deterministic seeded cask portfolio (47 casks)
+- Chainlink CRE SDK dependency wired into workflow runtime scaffolding
 - Workflow simulation scripts for:
   - Proof of reserve
   - Physical attributes
   - Lifecycle webhook ingest
   - Lifecycle reconciliation
-- Smart contract storage skeleton (Solidity) for reserve/attributes/lifecycle
+- Smart contract report-consumer skeleton (Solidity) with `onReport` decoding and forwarder path
 - Demo helper scripts
 
 Not implemented yet (planned next):
 
-- Real Chainlink CRE SDK workflow bindings
+- Full CRE managed runtime wiring (beyond local simulation scripts)
 - Sepolia deployment wiring
 - Confidential HTTP capability integration
 - Foundry test suite
@@ -50,6 +51,13 @@ In a second terminal:
 npm run simulate:all
 ```
 
+## Quick Start (bun-compatible aliases)
+
+```bash
+npm run seed:bun
+npm run dev:api:bun
+```
+
 ## API Endpoints
 
 - `GET /health`
@@ -57,10 +65,14 @@ npm run simulate:all
 - `GET /cask/:id/gauge-record`
 - `GET /cask/:id/estimate`
 - `GET /cask/:id/lifecycle`
+- `GET /casks/batch`
+- `GET /lifecycle/recent`
 - `GET /portfolio/summary`
 - `GET /market-data`
 - `GET /cask/:id/reference-valuation`
 - `POST /events/lifecycle`
+
+`workflows/physical-attributes` now uses 2 HTTP calls and `workflows/lifecycle-reconcile` uses 1 HTTP call to stay within CRE execution limits.
 
 ## Config
 

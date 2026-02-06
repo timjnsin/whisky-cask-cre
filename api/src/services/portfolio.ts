@@ -1,12 +1,14 @@
 ﻿import { promises as fs } from "node:fs";
 import path from "node:path";
 import {
+  CaskBatchResponse,
   CaskRecord,
   GaugeRecordResponse,
   LifecycleEvent,
   LifecycleWebhookPayload,
   PortfolioData,
   PortfolioSummaryResponse,
+  RecentLifecycleResponse,
 } from "../domain/types.js";
 import { round2 } from "../domain/units.js";
 import { buildInventoryResponse } from "./attestation.js";
@@ -43,14 +45,23 @@ function sortLifecycle(events: LifecycleEvent[]): LifecycleEvent[] {
 
 export class PortfolioStore {
   private data: PortfolioData | null = null;
+  private caskById = new Map<number, CaskRecord>();
 
   async init(): Promise<void> {
     try {
       const raw = await fs.readFile(DATA_PATH, "utf8");
-      this.data = JSON.parse(raw) as PortfolioData;
+      this.data = JSON.parse(raw.replace(/^\uFEFF/, "")) as PortfolioData;
     } catch {
       this.data = generatePortfolioData();
       await this.persist();
+    }
+    this.rebuildIndex();
+  }
+
+  private rebuildIndex(): void {
+    this.caskById.clear();
+    for (const cask of this.getAllCasks()) {
+      this.caskById.set(cask.caskId, cask);
     }
   }
 
@@ -60,7 +71,11 @@ export class PortfolioStore {
   }
 
   getCask(caskId: number): CaskRecord | undefined {
-    return this.getAllCasks().find((cask) => cask.caskId === caskId);
+    return this.caskById.get(caskId);
+  }
+
+  private getActiveCasks(): CaskRecord[] {
+    return this.getAllCasks().filter((cask) => cask.state !== "bottled");
   }
 
   getGaugeRecord(caskId: number): GaugeRecordResponse | undefined {
@@ -78,8 +93,55 @@ export class PortfolioStore {
     return cask ? sortLifecycle(cask.lifecycle) : undefined;
   }
 
+  getCaskBatch(ids: number[] | undefined, limit: number | undefined, asOf: string): CaskBatchResponse {
+    const maxItems = Math.max(1, Math.min(50, limit ?? 20));
+
+    const sourceIds =
+      ids && ids.length > 0
+        ? [...new Set(ids)]
+        : this.getActiveCasks()
+            .map((cask) => cask.caskId)
+            .sort((a, b) => a - b)
+            .slice(0, maxItems);
+
+    const selectedIds = sourceIds.slice(0, maxItems);
+
+    const items = selectedIds
+      .map((caskId) => {
+        const cask = this.getCask(caskId);
+        if (!cask) return undefined;
+        return {
+          gaugeRecord: toGaugeRecord(cask),
+          estimate: estimateCask(cask, asOf),
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== undefined);
+
+    return {
+      asOf,
+      count: items.length,
+      items,
+    };
+  }
+
+  getRecentLifecycle(limit: number, asOf: string): RecentLifecycleResponse {
+    const maxItems = Math.max(1, Math.min(200, limit));
+
+    const events = this.getAllCasks()
+      .flatMap((cask) => cask.lifecycle)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, maxItems)
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+    return {
+      asOf,
+      count: events.length,
+      events,
+    };
+  }
+
   getInventory(asOf: string) {
-    const active = this.getAllCasks().filter((cask) => cask.state !== "bottled");
+    const active = this.getActiveCasks();
     const totalProofGallons = round2(
       active.reduce((sum, cask) => sum + cask.lastGauge.proofGallons, 0),
     );
@@ -106,7 +168,10 @@ export class PortfolioStore {
     for (const cask of casks) {
       const months = Math.max(
         0,
-        Math.floor((new Date(asOf).getTime() - new Date(cask.fillDate).getTime()) / (1000 * 60 * 60 * 24 * 30.4375)),
+        Math.floor(
+          (new Date(asOf).getTime() - new Date(cask.fillDate).getTime()) /
+            (1000 * 60 * 60 * 24 * 30.4375),
+        ),
       );
       if (months < 24) ageBuckets["0_24"] += 1;
       else if (months < 36) ageBuckets["24_36"] += 1;

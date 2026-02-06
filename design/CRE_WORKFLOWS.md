@@ -26,8 +26,8 @@ Architecture has 3 components, implemented as 4 workflows to remove trigger ambi
 ## Execution Budgets
 
 - Proof of Reserve: 1 HTTP (`/inventory`) + 1 EVM read (`totalMinted()`) + 1 EVM write
-- Physical Attribute Oracle: 2 HTTP (`/portfolio/summary` + `/cask/{id}/gauge-record`) + 1 EVM write (batch)
+- Physical Attribute Oracle: 2 HTTP (`/portfolio/summary` + `/casks/batch`) + 1 EVM write (batch)
 - Lifecycle Webhook: up to 1 HTTP + 1 EVM write
-- Lifecycle Reconcile: 1 HTTP (`/cask/{id}/lifecycle`) + 1 EVM write
+- Lifecycle Reconcile: 1 HTTP (`/lifecycle/recent`) + 1 EVM write
 
 All are within expected CRE execution limits for hackathon scope.

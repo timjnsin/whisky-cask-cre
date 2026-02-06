@@ -3,8 +3,8 @@ set -euo pipefail
 
 npm run seed
 
-# Start API in background
-npm run dev:api &
+# Start API in background as a direct process for reliable shutdown.
+npx tsx api/src/index.ts &
 API_PID=$!
 
 cleanup() {

@@ -28,7 +28,7 @@ Fields map directly to federally mandated package records:
 - **Entry record:** `caskType`, `spiritType`, `fillDate`, `entryProofGallons`, `entryWineGallons`, `entryProof`
 - **Last gauge:** `lastGaugeProofGallons`, `lastGaugeWineGallons`, `lastGaugeProof`, `lastGaugeDate`, `lastGaugeMethod`
 - **Tier 2 estimate:** `estimatedProofGallons` (clearly separated from gauge data)
-- **Lifecycle:** `state`, `warehouseId`
+- **Lifecycle:** `state`, `warehouseCode` (`bytes16`, fixed-width storage)
 
 See FULL_MAP.md section 6 for the full struct definition with scaling conventions.
 
@@ -40,6 +40,16 @@ See FULL_MAP.md section 6 for the full struct definition with scaling convention
 
 ### LifecycleTransition event
 `caskId` (indexed), `fromState`, `toState`, `timestamp`, `gaugeProofGallons`, `gaugeWineGallons`, `gaugeProof` (all zero if not a gauge event)
+
+### Report Ingestion
+
+- Contract supports `onReport(bytes)` and `onReport(bytes,bytes)` entry points.
+- Reports decode as `(reportType, payload)` and route to:
+  - public reserve attestation update
+  - private reserve attestation update
+  - cask batch update
+  - lifecycle transition update
+- `keystoneForwarder` is explicitly configurable and accepted as a report source.
 
 ## Remaining Validation Items
 

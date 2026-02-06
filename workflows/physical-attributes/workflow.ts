@@ -1,14 +1,14 @@
 ﻿import {
-  EstimateResponse,
-  GaugeRecordResponse,
-  InventoryResponse,
+  CaskBatchItem,
+  CaskBatchResponse,
   PortfolioSummaryResponse,
 } from "../../api/src/domain/types.js";
 import { toScaled1, toScaled2 } from "../../api/src/domain/units.js";
 import { loadConfig } from "../shared/config.js";
+import { getCreSdkStatus } from "../shared/cre-sdk.js";
 import { getJson } from "../shared/http.js";
 
-function caskTypeEnum(caskType: GaugeRecordResponse["caskType"]): number {
+function caskTypeEnum(caskType: CaskBatchItem["gaugeRecord"]["caskType"]): number {
   switch (caskType) {
     case "bourbon_barrel":
       return 0;
@@ -23,7 +23,7 @@ function caskTypeEnum(caskType: GaugeRecordResponse["caskType"]): number {
   }
 }
 
-function spiritTypeEnum(spiritType: GaugeRecordResponse["spiritType"]): number {
+function spiritTypeEnum(spiritType: CaskBatchItem["gaugeRecord"]["spiritType"]): number {
   switch (spiritType) {
     case "bourbon":
       return 0;
@@ -38,7 +38,7 @@ function spiritTypeEnum(spiritType: GaugeRecordResponse["spiritType"]): number {
   }
 }
 
-function gaugeMethodEnum(method: GaugeRecordResponse["lastGaugeMethod"]): number {
+function gaugeMethodEnum(method: CaskBatchItem["gaugeRecord"]["lastGaugeMethod"]): number {
   switch (method) {
     case "entry":
       return 0;
@@ -53,32 +53,28 @@ function gaugeMethodEnum(method: GaugeRecordResponse["lastGaugeMethod"]): number
   }
 }
 
+function warehouseCodeHex(warehouseId: string): string {
+  const encoded = Buffer.from(warehouseId, "utf8").toString("hex").slice(0, 32);
+  return `0x${encoded.padEnd(32, "0")}`;
+}
+
 async function main() {
   const config = await loadConfig(import.meta.url);
+  const creSdk = getCreSdkStatus();
 
   const summary = await getJson<PortfolioSummaryResponse>(`${config.apiBaseUrl}/portfolio/summary`);
-  const inventory = await getJson<InventoryResponse>(`${config.apiBaseUrl}/inventory`);
 
-  const candidateIds =
-    summary.recentlyChangedCaskIds.length > 0
-      ? summary.recentlyChangedCaskIds
-      : inventory.active_cask_ids_sorted;
+  const targetIds = summary.recentlyChangedCaskIds.slice(0, 20);
+  const batchUrl =
+    targetIds.length > 0
+      ? `${config.apiBaseUrl}/casks/batch?ids=${targetIds.join(",")}&limit=20`
+      : `${config.apiBaseUrl}/casks/batch?limit=20`;
 
-  const targetIds = candidateIds.slice(0, 20);
+  const batch = await getJson<CaskBatchResponse>(batchUrl);
 
-  const records = await Promise.all(
-    targetIds.map((id) => getJson<GaugeRecordResponse>(`${config.apiBaseUrl}/cask/${id}/gauge-record`)),
-  );
-
-  const estimates = await Promise.all(
-    targetIds.map((id) => getJson<EstimateResponse>(`${config.apiBaseUrl}/cask/${id}/estimate`)),
-  );
-
-  const estimateById = new Map(estimates.map((estimate) => [estimate.caskId, estimate]));
-
-  const batchPayload = records.map((record) => {
-    const estimate = estimateById.get(record.caskId);
-    if (!estimate) throw new Error(`Missing estimate for cask ${record.caskId}`);
+  const payload = batch.items.map((item) => {
+    const record = item.gaugeRecord;
+    const estimate = item.estimate;
 
     return {
       caskId: record.caskId,
@@ -94,20 +90,23 @@ async function main() {
       lastGaugeDate: Math.floor(new Date(record.lastGaugeDate).getTime() / 1000),
       lastGaugeMethod: gaugeMethodEnum(record.lastGaugeMethod),
       estimatedProofGallons: toScaled2(estimate.estimatedCurrentProofGallons).toString(),
-      warehouseId: record.warehouseId,
+      warehouseCode: warehouseCodeHex(record.warehouseId),
       state: record.state,
     };
   });
 
   console.log("[physical-attributes] summary", {
     totalCasks: summary.totalCasks,
-    changedCasksConsidered: targetIds.length,
+    changedCasksHint: summary.recentlyChangedCaskIds.length,
+    batchCount: batch.count,
+    httpCalls: 2,
     chainSelector: config.chainSelector,
   });
 
   console.log("[physical-attributes] batch payload preview (first 3)");
-  console.log(JSON.stringify(batchPayload.slice(0, 3), null, 2));
-  console.log("[physical-attributes] batch size", batchPayload.length);
+  console.log(JSON.stringify(payload.slice(0, 3), null, 2));
+  console.log("[physical-attributes] batch size", payload.length);
+  console.log("[physical-attributes] cre-sdk", creSdk);
 }
 
 main().catch((error) => {

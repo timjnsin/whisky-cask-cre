@@ -1,10 +1,12 @@
 ﻿import { InventoryResponse } from "../../api/src/domain/types.js";
 import { loadConfig } from "../shared/config.js";
+import { getCreSdkStatus } from "../shared/cre-sdk.js";
 import { getJson } from "../shared/http.js";
 import { buildReserveReport } from "../shared/reports.js";
 
 async function main() {
   const config = await loadConfig(import.meta.url);
+  const creSdk = getCreSdkStatus();
   const inventory = await getJson<InventoryResponse>(`${config.apiBaseUrl}/inventory`);
 
   const totalTokenSupply = config.tokenSupplyUnits ?? Number(process.env.TOKEN_SUPPLY_UNITS ?? 47000);
@@ -27,6 +29,7 @@ async function main() {
 
   console.log("[proof-of-reserve] report payload");
   console.log(JSON.stringify(report, null, 2));
+  console.log("[proof-of-reserve] cre-sdk", creSdk);
 }
 
 main().catch((error) => {

@@ -112,6 +112,23 @@ export interface PortfolioSummaryResponse {
   recentlyChangedCaskIds: number[];
 }
 
+export interface CaskBatchItem {
+  gaugeRecord: GaugeRecordResponse;
+  estimate: EstimateResponse;
+}
+
+export interface CaskBatchResponse {
+  asOf: string;
+  count: number;
+  items: CaskBatchItem[];
+}
+
+export interface RecentLifecycleResponse {
+  asOf: string;
+  count: number;
+  events: LifecycleEvent[];
+}
+
 export interface MarketDataResponse {
   source: string;
   asOf: string;

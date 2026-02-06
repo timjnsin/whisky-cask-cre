@@ -20,6 +20,21 @@ function parseCaskId(param: string): number | null {
   return id;
 }
 
+function parseIdList(rawIds: string | undefined): number[] | undefined {
+  if (!rawIds) return undefined;
+  const ids = rawIds
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  return ids.length > 0 ? ids : undefined;
+}
+
+function parseLimit(rawLimit: string | undefined, fallback: number, min = 1, max = 200): number {
+  const parsed = Number(rawLimit ?? fallback);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(parsed)));
+}
+
 async function bootstrap(): Promise<void> {
   const store = new PortfolioStore();
   await store.init();
@@ -65,6 +80,19 @@ async function bootstrap(): Promise<void> {
     const lifecycle = adapter.getLifecycle(caskId);
     if (!lifecycle) return c.json({ error: "cask not found" }, 404);
     return c.json({ caskId, events: lifecycle });
+  });
+
+  app.get("/casks/batch", (c) => {
+    const asOf = new Date().toISOString();
+    const ids = parseIdList(c.req.query("ids"));
+    const limit = parseLimit(c.req.query("limit"), 20, 1, 50);
+    return c.json(adapter.getCaskBatch(ids, limit, asOf));
+  });
+
+  app.get("/lifecycle/recent", (c) => {
+    const asOf = new Date().toISOString();
+    const limit = parseLimit(c.req.query("limit"), 100, 1, 200);
+    return c.json(adapter.getRecentLifecycle(limit, asOf));
   });
 
   app.get("/portfolio/summary", (c) => {

@@ -2,7 +2,7 @@
 
 npm run seed
 
-$api = Start-Process -FilePath "npm" -ArgumentList "run", "dev:api" -PassThru -WindowStyle Hidden
+$api = Start-Process -FilePath "npx" -ArgumentList "tsx", "api/src/index.ts" -PassThru -WindowStyle Hidden
 Start-Sleep -Seconds 2
 
 try {
@@ -14,5 +14,10 @@ try {
 finally {
   if ($api -and -not $api.HasExited) {
     Stop-Process -Id $api.Id -Force
+  }
+
+  $conn = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($conn) {
+    Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
   }
 }

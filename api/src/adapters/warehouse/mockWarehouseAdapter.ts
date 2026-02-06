@@ -22,6 +22,14 @@ export class MockWarehouseAdapter implements WarehouseAdapter {
     return this.store.getLifecycle(caskId);
   }
 
+  getCaskBatch(ids: number[] | undefined, limit: number | undefined, asOf: string) {
+    return this.store.getCaskBatch(ids, limit, asOf);
+  }
+
+  getRecentLifecycle(limit: number, asOf: string) {
+    return this.store.getRecentLifecycle(limit, asOf);
+  }
+
   getSummary(asOf: string) {
     return this.store.getSummary(asOf);
   }

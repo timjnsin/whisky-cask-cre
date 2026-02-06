@@ -74,6 +74,15 @@ Each cask's gauge record exposes these fields — directly mapped from TTB-manda
 | `angelShareRate` | number | Annual rate used (e.g., 0.035 for 3.5%) |
 | `daysSinceLastGauge` | integer | Data freshness indicator |
 
+## CRE-Oriented Batch Endpoints
+
+To stay within CRE HTTP execution limits, the API exposes batch/reconcile routes:
+
+- `GET /casks/batch?ids=1,2,3&limit=20`
+  - Returns `gaugeRecord + estimate` for each requested cask in one response.
+- `GET /lifecycle/recent?limit=100`
+  - Returns recent lifecycle events across casks for reconcile workflow replay.
+
 ## Seed Portfolio Design
 
 47 casks map proportionally to Brogue's 1,359-barrel inventory. See [MODEL_TO_API_MAP.md](MODEL_TO_API_MAP.md) for source model parameters.

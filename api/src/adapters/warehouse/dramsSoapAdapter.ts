@@ -25,6 +25,14 @@ export class DramsSoapAdapter implements WarehouseAdapter {
     return this.unsupported("getLifecycle");
   }
 
+  getCaskBatch() {
+    return this.unsupported("getCaskBatch");
+  }
+
+  getRecentLifecycle() {
+    return this.unsupported("getRecentLifecycle");
+  }
+
   getSummary() {
     return this.unsupported("getSummary");
   }

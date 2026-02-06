@@ -5,6 +5,7 @@ import {IWhiskyCaskVault} from "./interfaces/IWhiskyCaskVault.sol";
 
 contract WhiskyCaskVault is IWhiskyCaskVault {
     address public owner;
+    address public keystoneForwarder;
     mapping(address => bool) public reporters;
 
     uint256 public override totalMinted;
@@ -14,6 +15,7 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
     ReserveAttestationPrivate private privateReserveAttestation;
 
     event ReporterUpdated(address indexed reporter, bool allowed);
+    event KeystoneForwarderUpdated(address indexed forwarder);
     event TotalMintedUpdated(uint256 totalMintedUnits);
     event CaskAttributesUpdated(uint256 indexed caskId, uint256 timestamp);
     event ReserveAttestationPublicUpdated(
@@ -50,6 +52,16 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         _;
     }
 
+    modifier onlyReportSource() {
+        require(
+            msg.sender == owner
+                || reporters[msg.sender]
+                || (keystoneForwarder != address(0) && msg.sender == keystoneForwarder),
+            "not report source"
+        );
+        _;
+    }
+
     constructor() {
         owner = msg.sender;
     }
@@ -59,9 +71,64 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         emit ReporterUpdated(reporter, allowed);
     }
 
+    function setKeystoneForwarder(address forwarder) external onlyOwner {
+        keystoneForwarder = forwarder;
+        emit KeystoneForwarderUpdated(forwarder);
+    }
+
     function transferOwnership(address newOwner) external onlyOwner {
         require(newOwner != address(0), "zero owner");
         owner = newOwner;
+    }
+
+    function onReport(bytes calldata report) external override onlyReportSource {
+        _handleReport(report);
+    }
+
+    function onReport(bytes calldata, bytes calldata report)
+        external
+        override
+        onlyReportSource
+    {
+        _handleReport(report);
+    }
+
+    function _handleReport(bytes calldata report) internal {
+        (uint8 reportTypeRaw, bytes memory payload) = abi.decode(report, (uint8, bytes));
+        ReportType reportType = ReportType(reportTypeRaw);
+
+        if (reportType == ReportType.RESERVE_PUBLIC) {
+            ReserveAttestationPublic memory attestation = abi.decode(payload, (ReserveAttestationPublic));
+            _setReserveAttestationPublic(attestation);
+            return;
+        }
+
+        if (reportType == ReportType.RESERVE_PRIVATE) {
+            ReserveAttestationPrivate memory attestation = abi.decode(payload, (ReserveAttestationPrivate));
+            _setReserveAttestationPrivate(attestation);
+            return;
+        }
+
+        if (reportType == ReportType.CASK_BATCH) {
+            CaskAttributesInput[] memory updates = abi.decode(payload, (CaskAttributesInput[]));
+            _upsertCaskAttributesBatch(updates);
+            return;
+        }
+
+        if (reportType == ReportType.LIFECYCLE) {
+            LifecycleReport memory lifecycleReport = abi.decode(payload, (LifecycleReport));
+            _recordLifecycleTransition(
+                lifecycleReport.caskId,
+                lifecycleReport.toState,
+                lifecycleReport.timestamp,
+                lifecycleReport.gaugeProofGallons,
+                lifecycleReport.gaugeWineGallons,
+                lifecycleReport.gaugeProof
+            );
+            return;
+        }
+
+        revert("unsupported report type");
     }
 
     function setTotalMinted(uint256 totalMintedUnits) external onlyReporter {
@@ -70,6 +137,10 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
     }
 
     function upsertCaskAttributesBatch(CaskAttributesInput[] calldata updates) external onlyReporter {
+        _upsertCaskAttributesBatch(updates);
+    }
+
+    function _upsertCaskAttributesBatch(CaskAttributesInput[] memory updates) internal {
         uint256 length = updates.length;
         for (uint256 i = 0; i < length; i++) {
             uint256 caskId = updates[i].caskId;
@@ -82,6 +153,10 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         external
         onlyReporter
     {
+        _setReserveAttestationPublic(attestation);
+    }
+
+    function _setReserveAttestationPublic(ReserveAttestationPublic memory attestation) internal {
         publicReserveAttestation = attestation;
         emit ReserveAttestationPublicUpdated(
             attestation.physicalCaskCount,
@@ -97,6 +172,10 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         external
         onlyReporter
     {
+        _setReserveAttestationPrivate(attestation);
+    }
+
+    function _setReserveAttestationPrivate(ReserveAttestationPrivate memory attestation) internal {
         privateReserveAttestation = attestation;
         emit ReserveAttestationPrivateUpdated(
             attestation.isFullyReserved,
@@ -113,6 +192,24 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         uint256 gaugeWineGallons,
         uint16 gaugeProof
     ) external onlyReporter {
+        _recordLifecycleTransition(
+            caskId,
+            toState,
+            timestamp,
+            gaugeProofGallons,
+            gaugeWineGallons,
+            gaugeProof
+        );
+    }
+
+    function _recordLifecycleTransition(
+        uint256 caskId,
+        CaskState toState,
+        uint256 timestamp,
+        uint256 gaugeProofGallons,
+        uint256 gaugeWineGallons,
+        uint16 gaugeProof
+    ) internal {
         CaskAttributes storage current = caskAttributesById[caskId];
         CaskState fromState = current.state;
 

@@ -25,3 +25,8 @@ All gauge records are tracked in TTB-native units:
 - Data source is a deterministic mock shaped like regulated warehouse records.
 - CRE workflow scripts currently run in local simulation mode.
 - Contract is report-consumer storage, not full production token stack.
+
+## Runtime note
+
+- Day-1 execution uses Node + `tsx` for local simulation.
+- Workflows include `@chainlink/cre-sdk` scaffolding, and the report format is shaped for direct CRE runtime adoption.
