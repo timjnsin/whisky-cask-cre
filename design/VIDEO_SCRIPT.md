@@ -134,7 +134,7 @@ cd contracts && forge test -vvv
 
 "So what does this actually unlock?
 
-There are 39 million barrels of whisky maturing in warehouses right now. That's tens of billions of dollars in physical assets with no standardized data infrastructure.
+There are 39 million barrels of whisky maturing in warehouses right now. Kentucky alone values its aging inventory at ten billion dollars for tax purposes. Globally, four to nine billion dollars in cask transactions happen every year -- used barrel trade, NDP sourcing, independent bottler purchases, investor sales. All of it tracked on paper.
 
 **First: lending.** Scotland's Moveable Transactions Act came into force in April 2025. For the first time, lenders can take statutory pledges over whisky casks without physical delivery. They have the legal tools. What they don't have is the data layer -- proof that the collateral exists, current physical measurements, provenance trail. That's exactly what our oracle provides.
 

@@ -18,7 +18,18 @@ Whisky is arguably the best-suited physical asset for tokenization:
 - **Semi-fungible.** Unlike art or real estate, casks of the same distillery/age/type are substantially interchangeable within their cohort -- suitable for pooled ownership and tokenization.
 - **Consumption floor.** Independent bottlers and blenders always need aged stock. Even in a downturn, someone wants to bottle your whisky. This creates a demand floor that pure investment assets lack.
 
-39 million barrels of whisky are maturing in warehouses right now (22M in Scotland, 16M+ in Kentucky). The secondary cask market is ~$250M annually and growing 33% year-over-year. Scotland's Moveable Transactions Act (April 2025) just created statutory pledges over whisky casks -- lenders now have legal tools but zero data infrastructure. The lending market alone represents billions in untapped collateral.
+39 million barrels of whisky are maturing in warehouses right now (22M in Scotland, 16M+ in Kentucky). Kentucky alone assesses its aging inventory at $10 billion for tax purposes. The total value of whisky aging globally is conservatively $30-50 billion.
+
+The cask market is far larger than the retail investment slice. $4-9 billion in cask transactions happen annually across the supply chain:
+
+- **Used barrel trade (~$700M-1B/year).** 90% of Scotch matures in ex-bourbon casks. Kentucky exports $300M+ in used barrels to Scotland annually, with additional shipments to Mexico (tequila), Caribbean (rum), Ireland, Japan, and India.
+- **NDP sourcing (~$750M-4.5B/year).** Non-distiller producers and craft distillers buy hundreds of thousands of aged barrels from major producers. Brindiamo Group alone manages 260,000+ barrels. MGP Ingredients does $170M+ in quarterly revenue.
+- **Independent bottler purchases (~$200-800M/year).** Gordon & MacPhail, Signatory, Douglas Laing, Compass Box, and dozens of others buy casks commercially from distilleries -- B2B trades invisible to the retail market.
+- **Retail cask investment (~$200-500M/year).** CaskX sold 30,000+ bourbon casks in 2024. WhiskyInvestDirect holds 87,000+ casks. Growing 33% year-over-year but still the smallest segment.
+
+Every one of these transactions needs custody tracking. All of it runs on paper Delivery Orders, proprietary warehouse ledgers, and PDFs.
+
+Scotland's Moveable Transactions Act (April 2025) just created statutory pledges over whisky casks -- lenders now have legal tools but zero data infrastructure. The lending market alone represents billions in untapped collateral.
 
 ## What We Built
 
@@ -179,7 +190,7 @@ forge test -vvv
 contracts/
   src/WhiskyCaskVault.sol          Onchain report consumer (onReport routing by ReportType)
   src/interfaces/IWhiskyCaskVault.sol  Enums, structs, interface
-  test/WhiskyCaskVault.t.sol       Foundry tests (9 tests)
+  test/WhiskyCaskVault.t.sol       Foundry tests (12 tests)
   script/Deploy.s.sol              Sepolia deployment script
 
 api/
