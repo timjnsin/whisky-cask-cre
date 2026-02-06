@@ -9,6 +9,6 @@ export function getCreSdkStatus(): {
   return {
     typeLinked: true,
     runtimeLoaded: false,
-    note: "CRE SDK linked at type level; switch to runtime import when moving from local simulation to managed CRE execution.",
+    note: "Local simulation scripts are fetch-based; CRE runtime entrypoints now live in each workflow's index.ts.",
   };
 }

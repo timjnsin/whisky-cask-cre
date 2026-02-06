@@ -1,4 +1,4 @@
-﻿# Whisky Cask CRE Infrastructure
+# Whisky Cask CRE Infrastructure
 
 Day-1 baseline for a Chainlink CRE hackathon build focused on:
 
@@ -6,38 +6,44 @@ Day-1 baseline for a Chainlink CRE hackathon build focused on:
 2. Physical attribute oracle
 3. Lifecycle provenance
 
-This repo is intentionally modular so privacy mode and downstream financial products can be added without rewriting the core.
+This repo is modular so privacy mode and downstream financial products can be added without rewriting core data flows.
 
 ## Current Status
 
-Implemented in this baseline:
+Implemented:
 
 - Mock warehouse API (Hono) with TTB-native units (proof gallons, wine gallons, proof)
 - Deterministic seeded cask portfolio (47 casks)
-- Chainlink CRE SDK dependency wired into workflow runtime scaffolding
-- Workflow simulation scripts for:
-  - Proof of reserve
-  - Physical attributes
-  - Lifecycle webhook ingest
-  - Lifecycle reconciliation
-- Smart contract report-consumer skeleton (Solidity) with `onReport` decoding and forwarder path
-- Demo helper scripts
+- Contract report-consumer skeleton with `onReport(bytes)` routing by `ReportType`
+- Contract-aligned ABI report envelope encoding: `abi.encode(uint8 reportType, bytes payload)`
+- CRE runtime entrypoints (`index.ts`) for all 4 workflows using:
+  - `Runner.newRunner(...)`
+  - `cre.handler(...)`
+  - `CronCapability` / `HTTPCapability`
+  - `HTTPClient` / `EVMClient`
+  - `prepareReportRequest(...)` + `writeReport(...)`
+- Local simulation scripts (`workflow.ts`) retained for fast iteration and demo
 
-Not implemented yet (planned next):
+Remaining:
 
-- Full CRE managed runtime wiring (beyond local simulation scripts)
-- Sepolia deployment wiring
-- Confidential HTTP capability integration
-- Foundry test suite
+- Deploy and configure Sepolia addresses (`contractAddress`, forwarder, gas config)
+- Add Confidential HTTP capability path for PoR fetches
+- Add Foundry test suite
 
-## Why this shape
+## Workflow Entry Points
 
-- `api/` owns data realism and source adapter boundaries
-- `workflows/` owns report construction and mode-specific reserve logic
-- `contracts/` owns onchain storage/event schema
-- `design/` remains source-of-truth architecture docs
+- Local simulation scripts:
+  - `workflows/proof-of-reserve/workflow.ts`
+  - `workflows/physical-attributes/workflow.ts`
+  - `workflows/lifecycle-webhook/workflow.ts`
+  - `workflows/lifecycle-reconcile/workflow.ts`
+- CRE runtime scripts:
+  - `workflows/proof-of-reserve/index.ts`
+  - `workflows/physical-attributes/index.ts`
+  - `workflows/lifecycle-webhook/index.ts`
+  - `workflows/lifecycle-reconcile/index.ts`
 
-## Quick Start (Node)
+## Quick Start (Local Simulation)
 
 ```bash
 npm install
@@ -49,13 +55,6 @@ In a second terminal:
 
 ```bash
 npm run simulate:all
-```
-
-## Quick Start (bun-compatible aliases)
-
-```bash
-npm run seed:bun
-npm run dev:api:bun
 ```
 
 ## API Endpoints
@@ -72,24 +71,34 @@ npm run dev:api:bun
 - `GET /cask/:id/reference-valuation`
 - `POST /events/lifecycle`
 
-`workflows/physical-attributes` now uses 2 HTTP calls and `workflows/lifecycle-reconcile` uses 1 HTTP call to stay within CRE execution limits.
+Execution budgets are CRE-safe:
+
+- Proof of reserve: `1 HTTP + 1 EVM read + 1 EVM write`
+- Physical attributes: `2 HTTP + 1 EVM write`
+- Lifecycle webhook: `0-1 HTTP + 1 EVM write`
+- Lifecycle reconcile: `1 HTTP + 1 EVM write`
 
 ## Config
 
-Workflow configs live in:
+Workflow configs:
 
 - `workflows/proof-of-reserve/config.staging.json`
 - `workflows/physical-attributes/config.staging.json`
 - `workflows/lifecycle-webhook/config.staging.json`
 - `workflows/lifecycle-reconcile/config.staging.json`
 
-## Contract Note
+Supported config keys for CRE runtime files include:
 
-The Solidity contract is a storage/report-consumer skeleton and does not yet include production access control and token minting flow.
+- `apiBaseUrl`
+- `contractAddress`
+- `chainSelector`
+- `tokensPerCask`
+- `attestationMode`
+- `tokenSupplyUnits` (PoR fallback)
+- `submitReports`
+- `reportGasLimit`
 
-## Next Recommended Steps
+## Notes
 
-1. Swap mock warehouse adapter for a DRAMS-compatible adapter module.
-2. Wire workflow scripts to CRE SDK execution runtime.
-3. Add confidential reserve mode path to PoR workflow once Confidential HTTP is available.
-4. Add Foundry tests and Sepolia deployment scripts.
+- Solidity contract remains intentionally minimal (storage + report consumption, no ERC-1155 minting flow yet).
+- In this NodeNext workspace, SDK imports are loaded dynamically in `workflows/shared/cre-runtime.ts` for TypeScript compatibility. Runtime behavior still uses `@chainlink/cre-sdk` directly.
