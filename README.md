@@ -28,7 +28,6 @@ Remaining:
 
 - Deploy and configure Sepolia addresses (`contractAddress`, forwarder, gas config)
 - Add Confidential HTTP capability path for PoR fetches
-- Add Foundry test suite
 
 ## Workflow Entry Points
 
@@ -111,6 +110,9 @@ Supported config keys for CRE runtime files include:
 - `tokenSupplyUnits` (PoR fallback)
 - `submitReports`
 - `reportGasLimit`
+
+For demos, `project.yaml` currently uses a public Sepolia RPC endpoint. For multi-node/DON execution,
+use a dedicated provider URL to avoid rate-limit instability.
 
 ## Notes
 

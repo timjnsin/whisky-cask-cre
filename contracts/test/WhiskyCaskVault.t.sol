@@ -5,6 +5,18 @@ import {WhiskyCaskVault} from "../src/WhiskyCaskVault.sol";
 import {IWhiskyCaskVault} from "../src/interfaces/IWhiskyCaskVault.sol";
 
 contract VaultCaller {
+    function callSetReporter(address vault, address reporter, bool allowed) external {
+        WhiskyCaskVault(vault).setReporter(reporter, allowed);
+    }
+
+    function callTransferOwnership(address vault, address newOwner) external {
+        WhiskyCaskVault(vault).transferOwnership(newOwner);
+    }
+
+    function callSetKeystoneForwarder(address vault, address forwarder) external {
+        WhiskyCaskVault(vault).setKeystoneForwarder(forwarder);
+    }
+
     function callSetTotalMinted(address vault, uint256 totalMintedUnits) external {
         WhiskyCaskVault(vault).setTotalMinted(totalMintedUnits);
     }
@@ -256,5 +268,78 @@ contract WhiskyCaskVaultTest {
             )
         );
         require(!success, "outsider onReport should revert");
+    }
+
+    function testOnReportRejectsInvalidReportType() public {
+        bytes memory report = abi.encode(uint8(99), bytes(""));
+        bool success;
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                bytes4(keccak256("onReport(bytes)")),
+                report
+            )
+        );
+        require(!success, "invalid report type should revert");
+    }
+
+    function testTransferOwnershipUpdatesOwnerPermissions() public {
+        bool success;
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                WhiskyCaskVault.transferOwnership.selector,
+                address(0)
+            )
+        );
+        require(!success, "zero owner transfer should revert");
+
+        vault.transferOwnership(address(reporter));
+        require(vault.owner() == address(reporter), "owner should be reporter");
+
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                WhiskyCaskVault.setReporter.selector,
+                address(outsider),
+                true
+            )
+        );
+        require(!success, "old owner should not set reporter");
+
+        reporter.callSetReporter(address(vault), address(outsider), true);
+        outsider.callSetTotalMinted(address(vault), 123_000);
+        require(vault.totalMinted() == 123_000, "new owner permissions not applied");
+    }
+
+    function testZeroForwarderDisablesForwarderReportPath() public {
+        bytes memory payload = abi.encode(
+            IWhiskyCaskVault.ReserveAttestationPublic({
+                physicalCaskCount: 11,
+                totalTokenSupply: 11_000,
+                tokensPerCask: 1_000,
+                reserveRatio: 1e18,
+                timestamp: 1_735_360_123,
+                attestationHash: keccak256("forwarder-enabled")
+            })
+        );
+        bytes memory report = abi.encode(uint8(IWhiskyCaskVault.ReportType.RESERVE_PUBLIC), payload);
+
+        vault.setKeystoneForwarder(address(forwarder));
+        forwarder.callOnReportWithMetadata(address(vault), hex"00", report);
+
+        IWhiskyCaskVault.ReserveAttestationPublic memory attestation =
+            vault.latestPublicReserveAttestation();
+        require(attestation.physicalCaskCount == 11, "forwarder should be enabled");
+
+        vault.setKeystoneForwarder(address(0));
+
+        bool success;
+        (success,) = address(forwarder).call(
+            abi.encodeWithSelector(
+                VaultCaller.callOnReportWithMetadata.selector,
+                address(vault),
+                hex"00",
+                report
+            )
+        );
+        require(!success, "zero forwarder should disable forwarder report path");
     }
 }

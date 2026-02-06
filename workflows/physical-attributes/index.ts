@@ -25,6 +25,7 @@ const configSchema = baseCreConfigSchema.extend({
 type WorkflowConfig = z.infer<typeof configSchema>;
 
 function buildBatchPath(targetIds: number[], maxBatchSize: number): string {
+  // CRE WASM runtime does not expose URLSearchParams.
   const query: string[] = [`limit=${encodeURIComponent(String(maxBatchSize))}`];
   if (targetIds.length > 0) query.push(`ids=${targetIds.join(",")}`);
   return `/casks/batch?${query.join("&")}`;

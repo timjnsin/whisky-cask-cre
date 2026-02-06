@@ -17,6 +17,7 @@ const CHAIN_SELECTOR_ALIASES: Record<string, string> = {
 };
 
 export const baseCreConfigSchema = z.object({
+  // CRE WASM runtime does not expose URL(), so avoid z.string().url().
   apiBaseUrl: z
     .string()
     .regex(/^https?:\/\/[^\s]+$/i, "Invalid URL"),
@@ -262,6 +263,7 @@ export function resolveSnapshotAsOf<TConfig>(
 
 export function withAsOf(path: string, asOf: string): string {
   const [pathname, queryString] = path.split("?", 2);
+  // CRE WASM runtime does not expose URLSearchParams.
   const pairs: string[] = [];
   if (queryString) {
     for (const segment of queryString.split("&")) {
