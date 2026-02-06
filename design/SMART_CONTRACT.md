@@ -32,6 +32,11 @@ Fields map directly to federally mandated package records:
 
 See FULL_MAP.md section 6 for the full struct definition with scaling conventions.
 
+Enum notes:
+
+- `CaskType`: `BOURBON_BARREL`, `SHERRY_BUTT`, `HOGSHEAD`, `PORT_PIPE`
+- `SpiritType`: `BOURBON`, `RYE`, `MALT`, `WHEAT`
+
 ### ReserveAttestationPublic
 `physicalCaskCount`, `totalTokenSupply`, `tokensPerCask`, `reserveRatio` (1e18), `timestamp`, `attestationHash`
 

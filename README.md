@@ -99,6 +99,8 @@ Workflow configs:
 - `workflows/lifecycle-webhook/config.staging.json`
 - `workflows/lifecycle-reconcile/config.staging.json`
 
+Staging configs set `submitReports: false` by default so CRE runtime entrypoints can execute safely with zero addresses.
+
 Supported config keys for CRE runtime files include:
 
 - `apiBaseUrl`

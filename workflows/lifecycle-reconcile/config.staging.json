@@ -3,5 +3,6 @@
   "contractAddress": "0x0000000000000000000000000000000000000000",
   "chainSelector": "ethereum-sepolia",
   "tokensPerCask": 1000,
+  "submitReports": false,
   "attestationMode": "public"
 }

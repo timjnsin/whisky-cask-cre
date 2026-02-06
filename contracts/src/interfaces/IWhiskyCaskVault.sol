@@ -6,8 +6,14 @@ interface IWhiskyCaskVault {
         BOURBON_BARREL,
         SHERRY_BUTT,
         HOGSHEAD,
-        PORT_PIPE,
-        OTHER
+        PORT_PIPE
+    }
+
+    enum SpiritType {
+        BOURBON,
+        RYE,
+        MALT,
+        WHEAT
     }
 
     enum CaskState {
@@ -35,7 +41,7 @@ interface IWhiskyCaskVault {
 
     struct CaskAttributes {
         CaskType caskType;
-        uint8 spiritType;
+        SpiritType spiritType;
         uint256 fillDate;
         uint256 entryProofGallons;
         uint256 entryWineGallons;

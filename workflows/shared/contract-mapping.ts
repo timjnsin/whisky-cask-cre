@@ -133,8 +133,12 @@ export function unixSeconds(isoTimestamp: string): bigint {
 }
 
 export function warehouseCodeHex(warehouseId: string): Hex {
-  const encoded = Buffer.from(warehouseId, "utf8").toString("hex").slice(0, 32);
-  return `0x${encoded.padEnd(32, "0")}` as Hex;
+  const encodedBytes = Buffer.from(warehouseId, "utf8");
+  if (encodedBytes.length > 16) {
+    throw new Error(`warehouseId exceeds 16-byte limit: ${warehouseId}`);
+  }
+  const encodedHex = encodedBytes.toString("hex");
+  return `0x${encodedHex.padEnd(32, "0")}` as Hex;
 }
 
 export function mapBatchItemToContractInput(item: CaskBatchItem): ContractCaskAttributesInput {
@@ -177,4 +181,3 @@ export function mapLifecycleEventToContractReport(
     gaugeProof: toUint16(toScaled1(event.gaugeProof), "gaugeProof"),
   };
 }
-
