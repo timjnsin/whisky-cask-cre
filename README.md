@@ -135,6 +135,44 @@ forge build
 forge test -vvv
 ```
 
+## Files That Use Chainlink CRE
+
+### CRE Workflow Entrypoints (compiled to WASM, executed on DON)
+
+| File | CRE Capabilities Used |
+|------|----------------------|
+| [workflows/proof-of-reserve/index.ts](workflows/proof-of-reserve/index.ts) | CronCapability, HTTPClient (`/inventory`), EVMClient (`totalMinted()` read + report write) |
+| [workflows/physical-attributes/index.ts](workflows/physical-attributes/index.ts) | CronCapability, HTTPClient (`/portfolio/summary` + `/casks/batch`), report write |
+| [workflows/lifecycle-webhook/index.ts](workflows/lifecycle-webhook/index.ts) | HTTPCapability (webhook trigger), report write |
+| [workflows/lifecycle-reconcile/index.ts](workflows/lifecycle-reconcile/index.ts) | CronCapability, HTTPClient (`/lifecycle/recent`), report write |
+
+### CRE Shared Infrastructure
+
+| File | What It Does |
+|------|-------------|
+| [workflows/shared/cre-runtime.ts](workflows/shared/cre-runtime.ts) | CRE SDK facade: typed runtime, `loadCreSdk()`, `httpGetJson()`, `submitReport()`, `resolveSnapshotAsOf()`, `resolveTotalTokenSupply()` |
+| [workflows/shared/cre-sdk.ts](workflows/shared/cre-sdk.ts) | Type-only CRE SDK binding (`CreSdkTypeBinding`) |
+| [workflows/shared/report-encoding.ts](workflows/shared/report-encoding.ts) | ABI encoding for all 4 report types, matching Solidity structs exactly |
+| [workflows/shared/contract-mapping.ts](workflows/shared/contract-mapping.ts) | API-to-contract type transforms with exhaustive enum mappings |
+
+### CRE Workflow Manifests (CRE CLI configuration)
+
+| File | Trigger |
+|------|---------|
+| [workflows/proof-of-reserve/workflow.yaml](workflows/proof-of-reserve/workflow.yaml) | Cron (hourly) |
+| [workflows/physical-attributes/workflow.yaml](workflows/physical-attributes/workflow.yaml) | Cron (daily) |
+| [workflows/lifecycle-webhook/workflow.yaml](workflows/lifecycle-webhook/workflow.yaml) | HTTP trigger |
+| [workflows/lifecycle-reconcile/workflow.yaml](workflows/lifecycle-reconcile/workflow.yaml) | Cron (daily) |
+| [project.yaml](project.yaml) | Project-level CRE settings (RPC endpoints, chain selectors) |
+
+### Smart Contract (CRE Report Receiver)
+
+| File | CRE Integration |
+|------|----------------|
+| [contracts/src/WhiskyCaskVault.sol](contracts/src/WhiskyCaskVault.sol) | `onReport(bytes)` receiver, `keystoneForwarder` address, `onlyReportSource` modifier, report type dispatch |
+| [contracts/src/interfaces/IWhiskyCaskVault.sol](contracts/src/interfaces/IWhiskyCaskVault.sol) | `ReportType` enum, report payload structs, `onReport()` signatures |
+| [contracts/test/WhiskyCaskVault.t.sol](contracts/test/WhiskyCaskVault.t.sol) | Tests for KeystoneForwarder path, `onReport()` ACL, report routing |
+
 ## Project Structure
 
 ```
