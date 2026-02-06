@@ -46,11 +46,9 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
       const totalTokenSupply = resolveTotalTokenSupply(sdk, runtime);
       const timestamp = BigInt(Math.floor(new Date(snapshotAsOf).getTime() / 1000));
 
-      runtime.log(
-        `[proof-of-reserve] active=${inventory.physical_cask_count} attestation=${inventory.attestation_hash}`,
-      );
-
       if (runtime.config.attestationMode === "confidential") {
+        runtime.log(`[proof-of-reserve] mode=confidential attestation=${inventory.attestation_hash}`);
+
         const isFullyReserved =
           BigInt(inventory.physical_cask_count) * BigInt(runtime.config.tokensPerCask) >=
           totalTokenSupply;
@@ -67,13 +65,16 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
           mode: "confidential",
           asOf: snapshotAsOf,
           isFullyReserved,
-          physicalCaskCount: inventory.physical_cask_count,
           totalTokenSupply: totalTokenSupply.toString(),
           attestationHash: inventory.attestation_hash,
           reportBytes: encodedReport.length / 2 - 1,
           ...submission,
         };
       }
+
+      runtime.log(
+        `[proof-of-reserve] mode=public active=${inventory.physical_cask_count} attestation=${inventory.attestation_hash}`,
+      );
 
       const scaledReserveRatio = reserveRatioScaled(
         inventory.physical_cask_count,

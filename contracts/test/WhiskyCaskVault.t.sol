@@ -282,6 +282,108 @@ contract WhiskyCaskVaultTest {
         require(!success, "invalid report type should revert");
     }
 
+    function testReserveAttestationRejectsStaleTimestamp() public {
+        IWhiskyCaskVault.ReserveAttestationPublic memory attestation =
+            IWhiskyCaskVault.ReserveAttestationPublic({
+                physicalCaskCount: 47,
+                totalTokenSupply: 47_000,
+                tokensPerCask: 1_000,
+                reserveRatio: 1e18,
+                timestamp: 1_735_360_200,
+                attestationHash: keccak256("public-fresh")
+            });
+
+        vault.setReserveAttestationPublic(attestation);
+
+        bool success;
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                WhiskyCaskVault.setReserveAttestationPublic.selector,
+                attestation
+            )
+        );
+        require(!success, "stale public attestation should revert");
+    }
+
+    function testLifecycleRejectsUnknownCask() public {
+        bool success;
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                WhiskyCaskVault.recordLifecycleTransition.selector,
+                999,
+                IWhiskyCaskVault.CaskState.MATURATION,
+                1_736_000_400,
+                0,
+                0,
+                0
+            )
+        );
+        require(!success, "unknown cask lifecycle transition should revert");
+    }
+
+    function testLifecycleRejectsStaleTimestampAndInvalidTransition() public {
+        uint256 caskId = 303;
+        IWhiskyCaskVault.CaskAttributesInput[] memory updates = new IWhiskyCaskVault.CaskAttributesInput[](
+            1
+        );
+        updates[0] = IWhiskyCaskVault.CaskAttributesInput({
+            caskId: caskId,
+            attributes: IWhiskyCaskVault.CaskAttributes({
+                caskType: IWhiskyCaskVault.CaskType.BOURBON_BARREL,
+                spiritType: IWhiskyCaskVault.SpiritType.MALT,
+                fillDate: 1_670_000_000,
+                entryProofGallons: 500e2,
+                entryWineGallons: 260e2,
+                entryProof: 1120,
+                lastGaugeProofGallons: 480e2,
+                lastGaugeWineGallons: 250e2,
+                lastGaugeProof: 1110,
+                lastGaugeDate: 1_735_000_000,
+                lastGaugeMethod: IWhiskyCaskVault.GaugeMethod.WET_DIP,
+                estimatedProofGallons: 470e2,
+                state: IWhiskyCaskVault.CaskState.MATURATION,
+                warehouseCode: bytes16("WH-OR-004")
+            })
+        });
+
+        vault.upsertCaskAttributesBatch(updates);
+        vault.recordLifecycleTransition(
+            caskId,
+            IWhiskyCaskVault.CaskState.REGAUGED,
+            1_736_000_500,
+            479e2,
+            249e2,
+            1108
+        );
+
+        bool success;
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                WhiskyCaskVault.recordLifecycleTransition.selector,
+                caskId,
+                IWhiskyCaskVault.CaskState.TRANSFER,
+                1_736_000_500,
+                0,
+                0,
+                0
+            )
+        );
+        require(!success, "stale lifecycle timestamp should revert");
+
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                WhiskyCaskVault.recordLifecycleTransition.selector,
+                caskId,
+                IWhiskyCaskVault.CaskState.FILLED,
+                1_736_000_600,
+                0,
+                0,
+                0
+            )
+        );
+        require(!success, "invalid lifecycle transition should revert");
+    }
+
     function testTransferOwnershipUpdatesOwnerPermissions() public {
         bool success;
         (success,) = address(vault).call(

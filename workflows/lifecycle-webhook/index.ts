@@ -27,6 +27,14 @@ const authorizedKeySchema = z.object({
 
 const configSchema = baseCreConfigSchema.extend({
   webhookAuthorizedKeys: z.array(authorizedKeySchema).default([]),
+}).superRefine((config, ctx) => {
+  if (config.submitReports && config.webhookAuthorizedKeys.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["webhookAuthorizedKeys"],
+      message: "webhookAuthorizedKeys must be configured when submitReports=true",
+    });
+  }
 });
 
 type WorkflowConfig = z.infer<typeof configSchema>;

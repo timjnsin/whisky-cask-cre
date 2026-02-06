@@ -11,6 +11,7 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
     uint256 public override totalMinted;
 
     mapping(uint256 => CaskAttributes) private caskAttributesById;
+    mapping(uint256 => uint256) private lastLifecycleTimestampByCaskId;
     ReserveAttestationPublic private publicReserveAttestation;
     ReserveAttestationPrivate private privateReserveAttestation;
 
@@ -145,6 +146,9 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         for (uint256 i = 0; i < length; i++) {
             uint256 caskId = updates[i].caskId;
             caskAttributesById[caskId] = updates[i].attributes;
+            if (updates[i].attributes.lastGaugeDate > lastLifecycleTimestampByCaskId[caskId]) {
+                lastLifecycleTimestampByCaskId[caskId] = updates[i].attributes.lastGaugeDate;
+            }
             emit CaskAttributesUpdated(caskId, block.timestamp);
         }
     }
@@ -157,6 +161,7 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
     }
 
     function _setReserveAttestationPublic(ReserveAttestationPublic memory attestation) internal {
+        require(attestation.timestamp > publicReserveAttestation.timestamp, "stale public attestation");
         publicReserveAttestation = attestation;
         emit ReserveAttestationPublicUpdated(
             attestation.physicalCaskCount,
@@ -176,6 +181,7 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
     }
 
     function _setReserveAttestationPrivate(ReserveAttestationPrivate memory attestation) internal {
+        require(attestation.timestamp > privateReserveAttestation.timestamp, "stale private attestation");
         privateReserveAttestation = attestation;
         emit ReserveAttestationPrivateUpdated(
             attestation.isFullyReserved,
@@ -211,9 +217,16 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         uint16 gaugeProof
     ) internal {
         CaskAttributes storage current = caskAttributesById[caskId];
+        require(current.fillDate != 0, "unknown cask");
         CaskState fromState = current.state;
+        require(_isValidLifecycleTransition(fromState, toState), "invalid lifecycle transition");
+        require(
+            timestamp > lastLifecycleTimestampByCaskId[caskId],
+            "stale lifecycle event"
+        );
 
         current.state = toState;
+        lastLifecycleTimestampByCaskId[caskId] = timestamp;
 
         if (gaugeProofGallons > 0 || gaugeWineGallons > 0 || gaugeProof > 0) {
             current.lastGaugeProofGallons = gaugeProofGallons;
@@ -231,6 +244,48 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
             gaugeWineGallons,
             gaugeProof
         );
+    }
+
+    function _isValidLifecycleTransition(CaskState fromState, CaskState toState)
+        internal
+        pure
+        returns (bool)
+    {
+        if (fromState == toState) {
+            return true;
+        }
+
+        if (fromState == CaskState.FILLED) {
+            return toState == CaskState.MATURATION;
+        }
+
+        if (fromState == CaskState.MATURATION) {
+            return toState == CaskState.REGAUGED
+                || toState == CaskState.TRANSFER
+                || toState == CaskState.BOTTLING_READY;
+        }
+
+        if (fromState == CaskState.REGAUGED) {
+            return toState == CaskState.MATURATION
+                || toState == CaskState.TRANSFER
+                || toState == CaskState.BOTTLING_READY;
+        }
+
+        if (fromState == CaskState.TRANSFER) {
+            return toState == CaskState.MATURATION
+                || toState == CaskState.REGAUGED
+                || toState == CaskState.BOTTLING_READY;
+        }
+
+        if (fromState == CaskState.BOTTLING_READY) {
+            return toState == CaskState.BOTTLED;
+        }
+
+        if (fromState == CaskState.BOTTLED) {
+            return false;
+        }
+
+        return false;
     }
 
     function getCaskAttributes(uint256 caskId)
