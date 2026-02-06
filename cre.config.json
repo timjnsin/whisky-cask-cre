@@ -1,0 +1,11 @@
+﻿{
+  "project": "whisky-cask-cre",
+  "version": "0.1.0",
+  "chainSelector": "ethereum-sepolia",
+  "workflows": [
+    "proof-of-reserve",
+    "physical-attributes",
+    "lifecycle-webhook",
+    "lifecycle-reconcile"
+  ]
+}

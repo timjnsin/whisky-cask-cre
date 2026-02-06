@@ -1,0 +1,28 @@
+{
+  "name": "whisky-cask-cre",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chainlink CRE infrastructure for tokenized whisky cask reserve, attributes, and lifecycle data",
+  "type": "module",
+  "scripts": {
+    "seed": "tsx api/src/scripts/seed.ts",
+    "dev:api": "tsx api/src/index.ts",
+    "simulate:por": "tsx workflows/proof-of-reserve/workflow.ts",
+    "simulate:attributes": "tsx workflows/physical-attributes/workflow.ts",
+    "simulate:lifecycle:webhook": "tsx workflows/lifecycle-webhook/workflow.ts",
+    "simulate:lifecycle:reconcile": "tsx workflows/lifecycle-reconcile/workflow.ts",
+    "simulate:all": "npm run simulate:por && npm run simulate:attributes && npm run simulate:lifecycle:webhook && npm run simulate:lifecycle:reconcile",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.18.0",
+    "hono": "^4.10.4",
+    "viem": "^2.40.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

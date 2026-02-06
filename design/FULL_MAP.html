@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tokenized Whisky Cask Infrastructure - Full Map</title>
+<style>
+@page { size: A4; margin: 2cm 2.5cm; }
+  body {
+    font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 11pt; line-height: 1.55; color: #1a1a1a;
+    max-width: 800px; margin: 0 auto; padding: 20px;
+  }
+  h1 {
+    font-size: 22pt; font-weight: 700; color: #0d1117;
+    border-bottom: 3px solid #2563eb; padding-bottom: 8pt;
+    margin-top: 30pt; margin-bottom: 16pt;
+  }
+  h2 {
+    font-size: 15pt; font-weight: 600; color: #0d1117;
+    border-bottom: 1px solid #d1d5db; padding-bottom: 6pt;
+    margin-top: 26pt; margin-bottom: 12pt;
+  }
+  h3 {
+    font-size: 12pt; font-weight: 600; color: #24292f;
+    margin-top: 18pt; margin-bottom: 8pt;
+  }
+  table {
+    border-collapse: collapse; width: 100%;
+    margin: 12pt 0; font-size: 9.5pt;
+  }
+  th {
+    background-color: #1e293b; color: white; font-weight: 600;
+    text-align: left; padding: 8pt 10pt;
+  }
+  td {
+    padding: 6pt 10pt; border-bottom: 1px solid #e2e8f0; vertical-align: top;
+  }
+  tr:nth-child(even) td { background-color: #f8fafc; }
+  code {
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 9pt; background-color: #f1f5f9;
+    padding: 1pt 4pt; border-radius: 3pt;
+  }
+  pre {
+    background-color: #0d1117; color: #e6edf3;
+    padding: 14pt 16pt; border-radius: 6pt;
+    font-size: 8.5pt; line-height: 1.5;
+    overflow-x: auto; margin: 10pt 0;
+    page-break-inside: avoid;
+  }
+  pre code {
+    background: none; padding: 0; color: #e6edf3; font-size: 8.5pt;
+  }
+  blockquote {
+    border-left: 4px solid #2563eb; margin: 12pt 0;
+    padding: 8pt 16pt; background-color: #eff6ff;
+    color: #1e40af; font-style: italic;
+  }
+  strong { color: #0d1117; }
+  hr { border: none; border-top: 1px solid #d1d5db; margin: 20pt 0; }
+  p { margin: 6pt 0; }
+  ul, ol { margin: 6pt 0; padding-left: 22pt; }
+  li { margin: 3pt 0; }
+  @media print {
+    body { margin: 0; padding: 0; }
+    h2 { page-break-before: auto; }
+    pre, table, blockquote { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<h1 id="the-full-map-tokenized-whisky-cask-infrastructure">The Full Map: Tokenized Whisky Cask Infrastructure</h1>
+<h2 id="0-explicit-rules-locked-for-design-phase">0. EXPLICIT RULES (LOCKED FOR DESIGN PHASE)</h2>
+<p>These rules are the canonical constraints for every design doc in this repository:</p>
+<ol>
+<li>Oracle scope is <strong>physical attributes + reserve status + lifecycle provenance</strong>. This is <strong>not</strong> a NAV oracle.</li>
+<li>Dollar valuation is optional Tier 3 reference data and is not required for core onchain infrastructure.</li>
+<li>API runtime is <strong>TypeScript + Hono on bun</strong> for hackathon scope. No mixed FastAPI plan in active docs.</li>
+<li>Proof of reserve uses <code>TOKENS_PER_CASK = 1000</code> vault units to normalize cask count vs ERC-1155 token units.</li>
+<li>Confidential mode must not reveal raw inventory counts onchain. Only <code>isFullyReserved</code> + attestation hash.</li>
+<li>Baseline simulation mode may include raw counts for debugging, but privacy track narrative must use confidential mode semantics.</li>
+<li><code>FULL_MAP.md</code> is the source of truth. Other docs must mirror terminology, workflow names, and assumptions.</li>
+</ol>
+<h2 id="1-the-reality-of-cask-data">1. THE REALITY OF CASK DATA</h2>
+<h3 id="what-data-actually-exists-for-a-whisky-cask">What data actually exists for a whisky cask?</h3>
+<pre><code>CASK LIFECYCLE          DATA GENERATED                    SOURCE              CONFIDENCE
+─────────────────────────────────────────────────────────────────────────────────────────
+Distillation            New make spirit gauge              DSP records (TTB)   Hard fact
+                        (volume, proof, date)
+
+Filling                 Entry gauge: volume, proof,        Warehouse records   Hard fact
+                        cask serial, cask type,            (TTB-required)
+                        fill date, warehouse ID
+
+Years 0-6              NOTHING NEW.                        —                   —
+(maturation)           Cask sits. No measurement.
+                       Angel's share is happening
+                       but nobody's measuring it.
+
+Year 6+                Regauge (if owner requests):        Warehouse (on       Imprecise.
+(every 2-3yr)          RLA, ABV, bulk litres,             request)            Wet dip = stick
+                       date, method                                            in a barrel.
+                                                                              ±5-10% variance.
+                                                                              Full disgorge =
+                                                                              accurate but rare.
+
+Transfer               Re-gauge at origin + destination    Both warehouses     Hard fact
+                       New warehouse ID, date              (TTB-required)      (gauges imprecise)
+
+Bottling decision      Cask selected, final gauge          DSP/warehouse       Hard fact
+Bottling               Cask emptied, final yield,          DSP records         Hard fact
+                       bottles produced, proof              (TTB-required)
+
+Sale/Transfer          Ownership transfer record           Legal docs          Hard fact
+of ownership           (warehouse receipt assignment)
+</code></pre>
+<h3 id="key-insight-there-are-massive-data-gaps-during-maturation">Key insight: There are massive data gaps during maturation.</h3>
+<p>Between fill and first regauge (potentially 6+ years), the ONLY data is:
+- Entry gauge (one measurement from years ago)
+- Mathematical estimate of angel's share (model, not measurement)
+- The cask physically exists (warehouse can confirm)</p>
+<p>Between regauges (2-3 year intervals after year 6):
+- Last regauge data (stale within months)
+- Angel's share estimate since last regauge</p>
+<h3 id="regauge-accuracy-is-honestly-poor-for-wet-dip">Regauge accuracy is honestly poor for wet dip:</h3>
+<ul>
+<li>Cask sizes vary ±10% from nominal (a "250L hogshead" could be 240-270L)</li>
+<li>Temperature affects density readings</li>
+<li>Operator technique matters</li>
+<li>ABV measurement has decimal-place variability</li>
+<li>Only full disgorge (emptying the cask) is truly accurate, and that's rare</li>
+</ul>
+<hr />
+<h2 id="2-three-data-tiers">2. THREE DATA TIERS</h2>
+<h3 id="tier-1-verifiable-facts">Tier 1: Verifiable Facts</h3>
+<p>Things the warehouse/TTB records prove. Ground truth.</p>
+<table>
+<thead>
+<tr>
+<th>Data Point</th>
+<th>Source</th>
+<th>Update Frequency</th>
+<th>Accuracy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cask exists</td>
+<td>Warehouse inventory</td>
+<td>Continuous</td>
+<td>Binary — yes/no</td>
+</tr>
+<tr>
+<td>Cask type</td>
+<td>Entry records</td>
+<td>Once (immutable)</td>
+<td>Exact</td>
+</tr>
+<tr>
+<td>Fill date</td>
+<td>Entry records</td>
+<td>Once (immutable)</td>
+<td>Exact</td>
+</tr>
+<tr>
+<td>Entry gauge (volume, proof)</td>
+<td>TTB-required gauge</td>
+<td>Once</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Location (warehouse ID)</td>
+<td>Warehouse system</td>
+<td>On transfer</td>
+<td>Exact</td>
+</tr>
+<tr>
+<td>Ownership</td>
+<td>Warehouse receipt</td>
+<td>On transfer</td>
+<td>Exact (legal doc)</td>
+</tr>
+<tr>
+<td>Last regauge data</td>
+<td>Regauge report</td>
+<td>Every 2-3yr (after yr 6)</td>
+<td>Moderate (wet dip) to High (disgorge)</td>
+</tr>
+<tr>
+<td>Lifecycle state</td>
+<td>Warehouse records</td>
+<td>On event</td>
+<td>Exact</td>
+</tr>
+<tr>
+<td>Bottling yield</td>
+<td>DSP records</td>
+<td>Once (at bottling)</td>
+<td>Exact</td>
+</tr>
+</tbody>
+</table>
+<h3 id="tier-2-computed-estimates">Tier 2: Computed Estimates</h3>
+<p>Math applied to Tier 1 data. Transparent methodology, clearly labeled.</p>
+<table>
+<thead>
+<tr>
+<th>Data Point</th>
+<th>Inputs</th>
+<th>Method</th>
+<th>Accuracy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Current volume estimate</td>
+<td>Last gauge + time elapsed + climate rate</td>
+<td>Exponential decay model</td>
+<td>±10-15% between regauges</td>
+</tr>
+<tr>
+<td>Current age</td>
+<td>Fill date + now</td>
+<td>Subtraction</td>
+<td>Exact</td>
+</tr>
+<tr>
+<td>Estimated bottle yield</td>
+<td>Volume estimate + cask type + quality factor</td>
+<td>Linear model</td>
+<td>±15-20%</td>
+</tr>
+<tr>
+<td>Angel's share to date</td>
+<td>Entry gauge + age + climate rate</td>
+<td>Compound annual loss</td>
+<td>±5% cumulative</td>
+</tr>
+</tbody>
+</table>
+<h3 id="tier-3-market-opinions">Tier 3: Market Opinions</h3>
+<p>Models, comps, vibes. Useful as reference, not truth.</p>
+<table>
+<thead>
+<tr>
+<th>Data Point</th>
+<th>Source</th>
+<th>Reliability</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Comparable auction prices</td>
+<td>Auction houses (sparse, inconsistent)</td>
+<td>Low-moderate (thin market)</td>
+</tr>
+<tr>
+<td>Whisky index values</td>
+<td>RW101, Knight Frank (quarterly)</td>
+<td>Moderate (aggregate, not per-cask)</td>
+</tr>
+<tr>
+<td>Age-based appreciation curve</td>
+<td>Our model (calibrated to indices)</td>
+<td>It's a model. Labeled as such.</td>
+</tr>
+<tr>
+<td>Cask type premium</td>
+<td>Market convention + auction data</td>
+<td>Directionally correct, imprecise</td>
+</tr>
+<tr>
+<td>"What is this cask worth"</td>
+<td>All of the above blended</td>
+<td>An informed opinion, not a price</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-what-we-actually-build-grounded">3. WHAT WE ACTUALLY BUILD (GROUNDED)</h2>
+<h3 id="component-1-proof-of-reserve-tier-1-only-strongest-component">Component 1: Proof of Reserve (Tier 1 only — strongest component)</h3>
+<p><strong>What it proves:</strong> Physical inventory backing is at least the outstanding tokenized claims, using a fixed conversion of <code>TOKENS_PER_CASK = 1000</code>.</p>
+<p><strong>Data flow:</strong></p>
+<pre><code>Warehouse API                    CRE (DON consensus)              Smart Contract
+─────────────                    ───────────────────              ──────────────
+&quot;I have 47 casks&quot;  ──HTTP GET──▶  N nodes fetch,    ──EVM WRITE──▶  reserveRatio
+                                  independently                     = (47 * 1000) / 47000
+                                  verify, reach                     = 1.0
+                                  BFT consensus                     (fully reserved)
+                                                    ──EVM READ───▶  totalTokenSupply
+                                                      (from contract)
+</code></pre>
+<p><strong>Why CRE matters here (specifically):</strong>
+- Without CRE: Tim's server says "47 casks." Tim also issued the tokens. Self-attestation.
+- With CRE: N independent nodes fetch the warehouse data, independently verify, reach consensus. The attestation is "the DON confirms the warehouse reports 47 casks." Still trusts the warehouse (which is TTB-regulated), but the PIPELINE is decentralized.
+- With Confidential HTTP: Same attestation, but the actual number "47" never appears onchain or in node logs. Only "casks ≥ tokens" boolean. Competitors can't extract inventory intelligence.</p>
+<p><strong>Frequency:</strong> Hourly (or configurable). This is checking inventory count, not measuring liquid.</p>
+<p><strong>Attestation modes (explicit):</strong>
+- Baseline simulation mode: write count-derived ratio fields for operator debugging.
+- Confidential mode (privacy track): write only <code>isFullyReserved</code>, <code>timestamp</code>, and <code>attestationHash</code>.</p>
+<p><strong>Honest limitation:</strong> This proves cask COUNT matches tokens. It does NOT prove what's IN the casks. A warehouse could have 47 empty barrels. The trust model is: TTB-regulated warehouse + CRE-verified data pipeline. Not trustless end-to-end.</p>
+<hr />
+<h3 id="component-2-physical-attribute-oracle-tier-1-tier-2">Component 2: Physical Attribute Oracle (Tier 1 + Tier 2)</h3>
+<p><strong>This is intentionally not a NAV oracle.</strong></p>
+<p><strong>What it puts onchain:</strong></p>
+<p>Per cask (from Tier 1 — warehouse records):
+- Cask type, fill date, entry gauge, last regauge data + date, warehouse ID, lifecycle state</p>
+<p>Computed (Tier 2 — transparent math):
+- Current age (trivial)
+- Estimated current volume (angel's share model since last gauge, with model parameters visible)
+- Estimated bottle yield</p>
+<p>Aggregate:
+- Total casks, total estimated volume, portfolio age distribution</p>
+<p><strong>What it does NOT put onchain:</strong>
+- A dollar value. Not our job to say what a cask is "worth."
+- Or if it does, it's CLEARLY labeled as "reference valuation model v1, methodology X, not a market price."</p>
+<p><strong>Data flow:</strong></p>
+<pre><code>Warehouse API                    CRE                              Smart Contract
+─────────────                    ───                              ──────────────
+Per-cask attributes  ──HTTP──▶   Consensus on       ──WRITE──▶   caskAttributes[id]
+(type, age, gauge,               fetched data                     .caskType
+ state, regauge)                                                  .fillDate
+                                                                  .lastRegaugeRLA
+                                                                  .lastRegaugeDate
+                                                                  .estimatedVolume
+                                                                  .estimatedBottleYield
+                                                                  .state
+</code></pre>
+<p><strong>Why this matters:</strong>
+- Any protocol or investor can read verified physical attributes
+- A lending protocol uses these to set their OWN collateral haircut
+- A secondary market prices tokens based on visible attributes
+- Nobody is forced to trust OUR valuation model — they have the data to build their own</p>
+<p><strong>Frequency:</strong> Daily or on-regauge-event. Attributes don't change fast (age increments daily, volume estimate drifts slowly).</p>
+<hr />
+<h3 id="component-3-lifecycle-provenance-tier-1-only">Component 3: Lifecycle Provenance (Tier 1 only)</h3>
+<p><strong>What it records:</strong> Every state transition as an immutable onchain event.</p>
+<pre><code>fill → maturation → regauge → maturation → regauge → bottling_ready → bottled
+</code></pre>
+<p>Each transition logged with: cask ID, from state, to state, timestamp, metadata (gauge data if regauge, yield if bottled, etc.)</p>
+<p><strong>Data flow:</strong></p>
+<pre><code>Warehouse event                  CRE                              Smart Contract
+───────────────                  ───                              ──────────────
+&quot;Cask 7 regauged&quot;  ──webhook──▶  Verify + consensus  ──WRITE──▶  LifecycleTransition event
+ (RLA=185, ABV=58.5)                                              caskLifecycle[7].state
+                                                                  .lastRegaugeRLA = 185
+                                                                  .lastRegaugeDate = now
+</code></pre>
+<p><strong>Why this matters:</strong>
+- Immutable chain of custody from fill to bottle
+- Solves the "receipts problem" — prove your whisky is what you say it is
+- Every regauge result is permanently recorded (can see volume trajectory over time)
+- Regulatory compliance: auditable trail of every event</p>
+<p><strong>Frequency:</strong> Event-driven (webhook from warehouse) + daily cron fallback to catch missed events.</p>
+<hr />
+<h3 id="component-4-privacy-layer-the-core-feb-12">Component 4: Privacy Layer — THE CORE (Feb 12+)</h3>
+<p><strong>This is not an add-on. This is what makes the entire architecture viable for real participants.</strong></p>
+<p>No warehouse operator or fund will expose barrel counts, acquisition costs, supplier relationships, or portfolio composition on a public blockchain. Transparency and commercial reality are directly opposed. This is why every existing tokenized whisky project is marketing over substance — they can't solve this tension.</p>
+<p><strong>Confidential HTTP resolves it:</strong> Prove "cask count ≥ token supply" WITHOUT revealing:
+- Exact number of casks
+- Which warehouses
+- Barrel acquisition costs
+- Supplier relationships
+- Portfolio composition</p>
+<p><strong>What doesn't need privacy:</strong>
+- Lifecycle events (provenance = transparency by design)
+- Physical attributes of YOUR casks (token holders should see what they own)
+- Age, type, state (not commercially sensitive)</p>
+<p><strong>Generalizability:</strong> This pattern — privacy-preserving proof of reserve for physically-held assets with commercially sensitive custody data — applies to any bonded warehouse, any custodian, any asset class: wine collections, art storage, precious metals vaults, commodity warehouses. Whisky casks are the demo. The infrastructure is general.</p>
+<p><strong>Track strategy:</strong> Primary target is Privacy track ($16k). Less crowded field, we're early adopters of a capability that drops Feb 12, and the pattern generalizes. DeFi &amp; Tokenization ($20k) is the backup.</p>
+<hr />
+<h2 id="4-the-data-source-problem-honest">4. THE DATA SOURCE PROBLEM (HONEST)</h2>
+<p>The entire system depends on ONE data source: the warehouse API.</p>
+<p><strong>Current state (hackathon):</strong>
+- We build a bun/Hono server that serves seeded mock data
+- CRE workflows fetch from it
+- This demonstrates the architecture</p>
+<p><strong>What makes it credible anyway:</strong>
+- Warehouse operators are TTB-regulated (US) / HMRC-WOWGR regulated (UK)
+- Falsifying records is a federal offense
+- The warehouse's business model depends on reputation (custody is their product)
+- This isn't random API data — it's legally mandated records</p>
+<p><strong>Future evolution (beyond hackathon — mention in demo, don't build):</strong>
+- Multiple independent data sources (warehouse A + warehouse B + independent auditor)
+- CRE can fetch from all three and require 2-of-3 agreement
+- IoT sensors (weight, temperature, humidity) as additional verification
+- Third-party regauge services as independent confirmation
+- This is an architecture that SCALES to more trust sources. Hackathon = 1 source. Production = N sources.</p>
+<hr />
+<h2 id="5-stakeholder-value-map">5. STAKEHOLDER VALUE MAP</h2>
+<h3 id="cask-owner-token-issuer-tim">Cask Owner / Token Issuer (Tim)</h3>
+<table>
+<thead>
+<tr>
+<th>Problem Today</th>
+<th>What We Solve</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Investors can't verify casks exist</td>
+<td>Continuous proof of reserve, independently verified</td>
+</tr>
+<tr>
+<td>Quarterly PDF appraisals are slow and expensive</td>
+<td>Real-time physical attributes onchain</td>
+</tr>
+<tr>
+<td>No provenance trail beyond paper records</td>
+<td>Immutable lifecycle events from fill to bottle</td>
+</tr>
+<tr>
+<td>Sharing inventory data exposes commercial info</td>
+<td>Confidential HTTP: prove reserves without revealing details</td>
+</tr>
+<tr>
+<td>High cost of capital due to opacity</td>
+<td>Transparent verified data → investors accept lower risk premium</td>
+</tr>
+</tbody>
+</table>
+<h3 id="fund-manager-institutional-investor">Fund Manager / Institutional Investor</h3>
+<table>
+<thead>
+<tr>
+<th>Problem Today</th>
+<th>What We Solve</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stale NAV between annual appraisals</td>
+<td>Continuous attribute data — build your own model on verified inputs</td>
+</tr>
+<tr>
+<td>Expensive custody audits</td>
+<td>Proof of reserve replaces point-in-time audits</td>
+</tr>
+<tr>
+<td>Chain-of-custody documentation for compliance</td>
+<td>Lifecycle events satisfy audit trail requirements</td>
+</tr>
+<tr>
+<td>Can't independently verify broker claims</td>
+<td>Read the contract. It's all there.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="defi-protocol-lending-dex-etc">DeFi Protocol (lending, DEX, etc.)</h3>
+<table>
+<thead>
+<tr>
+<th>Problem Today</th>
+<th>What We Solve</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Can't accept RWA collateral without trusted price feed</td>
+<td>Physical attribute oracle provides inputs for collateral models</td>
+</tr>
+<tr>
+<td>No proof that collateral exists</td>
+<td>Proof of reserve is composable — any protocol can read it</td>
+</tr>
+<tr>
+<td>No standard for RWA data onchain</td>
+<td>Standardized struct for cask attributes that any protocol can consume</td>
+</tr>
+</tbody>
+</table>
+<h3 id="warehouse-operator">Warehouse Operator</h3>
+<table>
+<thead>
+<tr>
+<th>Problem Today</th>
+<th>What We Solve</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Manual reporting to multiple clients/investors</td>
+<td>Report once to API, oracle distributes</td>
+</tr>
+<tr>
+<td>Liability for valuation claims</td>
+<td>We don't publish valuations. Just facts. Warehouse not opining on price.</td>
+</tr>
+<tr>
+<td>Competitive risk from sharing data</td>
+<td>Confidential HTTP: data verified without public exposure</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="6-smart-contract-revision">6. SMART CONTRACT REVISION</h2>
+<p>Based on this grounded mapping, the contract should store:</p>
+<h3 id="per-cask-attributes-replaces-navdata">Per-Cask Attributes (replaces "NAVData")</h3>
+<pre><code>struct CaskAttributes {
+    CaskType  caskType;           // bourbon_barrel, sherry_butt, etc.
+    uint256   fillDate;           // unix timestamp
+    uint256   entryGaugeVolume;   // original volume in mL (integer, no decimals)
+    uint256   entryGaugeProof;    // proof * 10 (e.g., 1200 = 120 proof)
+    uint256   lastRegaugeRLA;     // regauged litres of alcohol, mL
+    uint256   lastRegaugeABV;     // ABV * 100 (e.g., 5850 = 58.5%)
+    uint256   lastRegaugeDate;    // unix timestamp (shows data freshness)
+    uint256   estimatedVolume;    // model estimate, clearly separate from gauge
+    CaskState state;
+    string    warehouseId;
+}
+</code></pre>
+<h3 id="reserve-attestation-two-explicit-modes">Reserve Attestation (two explicit modes)</h3>
+<pre><code>struct ReserveAttestationPublic {
+    uint256   physicalCaskCount;
+    uint256   totalTokenSupply;
+    uint256   tokensPerCask;
+    uint256   reserveRatio;       // scaled 1e18, (physicalCaskCount * tokensPerCask) / totalTokenSupply
+    uint256   timestamp;
+    bytes32   attestationHash;
+}
+
+struct ReserveAttestationPrivate {
+    bool      isFullyReserved;
+    uint256   timestamp;
+    bytes32   attestationHash;
+}
+</code></pre>
+<p>Privacy-track submissions use <code>ReserveAttestationPrivate</code> semantics.</p>
+<h3 id="lifecycle-event-stays-the-same-event-log">Lifecycle Event (stays the same — event log)</h3>
+<pre><code>event LifecycleTransition(
+    uint256 indexed caskId,
+    CaskState fromState,
+    CaskState toState,
+    uint256 timestamp,
+    uint256 regaugeRLA,           // 0 if not a regauge event
+    uint256 regaugeABV            // 0 if not a regauge event
+)
+</code></pre>
+<h3 id="optional-reference-valuation-clearly-labeled">Optional: Reference Valuation (clearly labeled)</h3>
+<pre><code>struct ReferenceValuation {
+    uint256   caskId;
+    uint256   estimatedValueUsd;  // 1e18 scaled
+    string    methodology;        // &quot;age_curve_v1&quot; | &quot;market_comp_v1&quot; | etc.
+    uint256   timestamp;
+    // Anyone can ignore this. The raw attributes are right there.
+}
+</code></pre>
+<hr />
+<h2 id="7-api-revision">7. API REVISION</h2>
+<p>Endpoints reflecting actual data tiers:</p>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Tier</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /inventory</code></td>
+<td>1</td>
+<td>Cask count, IDs, existence attestation</td>
+</tr>
+<tr>
+<td><code>GET /cask/{id}/attributes</code></td>
+<td>1</td>
+<td>Type, fill date, entry gauge, last regauge, state, warehouse</td>
+</tr>
+<tr>
+<td><code>GET /cask/{id}/estimate</code></td>
+<td>2</td>
+<td>Current volume estimate, bottle yield estimate, model version</td>
+</tr>
+<tr>
+<td><code>GET /cask/{id}/lifecycle</code></td>
+<td>1</td>
+<td>State history with timestamps and gauge data</td>
+</tr>
+<tr>
+<td><code>GET /portfolio/summary</code></td>
+<td>1+2</td>
+<td>Aggregate counts, volumes, age distribution</td>
+</tr>
+<tr>
+<td><code>GET /market-data</code></td>
+<td>3</td>
+<td>Auction comps, index values (reference only)</td>
+</tr>
+<tr>
+<td><code>GET /cask/{id}/reference-valuation</code></td>
+<td>3</td>
+<td>Model-based valuation, clearly labeled as estimate</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8-cre-workflow-revision">8. CRE WORKFLOW REVISION</h2>
+<p>Architecture has 3 components, implemented as 4 workflows to remove trigger ambiguity.</p>
+<h3 id="workflow-1-proof-of-reserve">Workflow 1: Proof of Reserve</h3>
+<ul>
+<li>Cron hourly</li>
+<li>HTTP -&gt; <code>/inventory</code> (1 call)</li>
+<li>EVM READ -&gt; <code>totalMinted()</code> (1 call)</li>
+<li>EVM WRITE -&gt; reserve attestation (public mode for baseline simulation, private mode for confidential submission)</li>
+<li><strong>Budget: 1 HTTP, 1 EVM read, 1 EVM write</strong></li>
+</ul>
+<h3 id="workflow-2-physical-attribute-oracle">Workflow 2: Physical Attribute Oracle</h3>
+<ul>
+<li>Cron daily (attributes do not change fast)</li>
+<li>HTTP -&gt; <code>/portfolio/summary</code> + <code>/cask/{id}/attributes</code> for recently changed casks (2 calls)</li>
+<li>EVM WRITE -&gt; batch update cask attributes</li>
+<li><strong>Budget: 2 HTTP, 0 EVM reads, 1 EVM write</strong></li>
+</ul>
+<h3 id="workflow-3-lifecycle-webhook">Workflow 3: Lifecycle Webhook</h3>
+<ul>
+<li>HTTP trigger (webhook) for real-time events</li>
+<li>EVM WRITE -&gt; lifecycle event</li>
+<li><strong>Budget: 0-1 HTTP, 0 EVM reads, 1 EVM write</strong></li>
+</ul>
+<h3 id="workflow-4-lifecycle-reconcile">Workflow 4: Lifecycle Reconcile</h3>
+<ul>
+<li>Cron daily fallback to catch missed events</li>
+<li>HTTP -&gt; <code>/cask/{id}/lifecycle</code> (1 call)</li>
+<li>EVM WRITE -&gt; lifecycle event replay for missed transitions</li>
+<li><strong>Budget: 1 HTTP, 0 EVM reads, 1 EVM write</strong></li>
+</ul>
+<p>All four workflows are within CRE execution limits for hackathon scope.</p>
+<hr />
+<h2 id="9-demo-narrative-revised">9. DEMO NARRATIVE (REVISED)</h2>
+<p>The pitch leads with the tension that privacy resolves:</p>
+<blockquote>
+<p>"The whisky cask investment market is $75B with no verifiable custody. Warehouse data is
+commercially sensitive — barrel counts, acquisition costs, supplier relationships. No custodian
+will put that on a public blockchain. So every tokenized whisky project is stuck: you can have
+transparency or you can have participation, but not both.</p>
+<p>Confidential HTTP breaks that trade-off. We built CRE infrastructure that lets bonded warehouses
+prove reserves, attest to physical attributes, and record lifecycle events — without exposing
+a single piece of commercially sensitive data. The chain sees 'reserves ≥ tokens: true.'
+Nobody sees the book.</p>
+<p>We built it for whisky casks because that's our business. But the pattern works for any
+physically-held asset with sensitive custody data — wine, art, precious metals, commodities."</p>
+</blockquote>
+<hr />
+<h2 id="10-what-we-build-feb-6-execution-order">10. WHAT WE BUILD FEB 6 (EXECUTION ORDER)</h2>
+<ol>
+<li><strong>Smart contract</strong> (day 1-2): CaskAttributes struct, ReserveAttestationPublic/Private semantics, LifecycleTransition events, onReport routing, read functions</li>
+<li><strong>Mock warehouse API</strong> (day 2-3): Bun/Hono serving seeded cask data across all endpoints, clearly separated tiers</li>
+<li><strong>CRE workflows</strong> (day 3-5): PoR, attributes oracle, lifecycle webhook + lifecycle reconcile. Get simulation working end-to-end.</li>
+<li><strong>Privacy layer</strong> (Feb 12+): Confidential HTTP swap on PoR inventory fetch</li>
+<li><strong>Reference valuation model</strong> (if time): Optional Tier 3 layer, clearly labeled and offchain-consumable</li>
+<li><strong>Demo video</strong> (Feb 25+): Record terminal demos, architecture diagram, narration</li>
+</ol>
+</body>
+</html>
