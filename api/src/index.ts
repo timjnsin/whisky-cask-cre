@@ -35,6 +35,13 @@ function parseLimit(rawLimit: string | undefined, fallback: number, min = 1, max
   return Math.max(min, Math.min(max, Math.floor(parsed)));
 }
 
+function parseAsOf(rawAsOf: string | undefined): string | null {
+  if (!rawAsOf) return new Date().toISOString();
+  const parsed = new Date(rawAsOf);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
 async function bootstrap(): Promise<void> {
   const store = new PortfolioStore();
   await store.init();
@@ -51,7 +58,8 @@ async function bootstrap(): Promise<void> {
   );
 
   app.get("/inventory", (c) => {
-    const asOf = new Date().toISOString();
+    const asOf = parseAsOf(c.req.query("asOf"));
+    if (!asOf) return c.json({ error: "invalid asOf timestamp" }, 400);
     return c.json(adapter.getInventory(asOf));
   });
 
@@ -68,7 +76,10 @@ async function bootstrap(): Promise<void> {
     const caskId = parseCaskId(c.req.param("id"));
     if (!caskId) return c.json({ error: "invalid cask id" }, 400);
 
-    const estimate = adapter.getEstimate(caskId, new Date().toISOString());
+    const asOf = parseAsOf(c.req.query("asOf"));
+    if (!asOf) return c.json({ error: "invalid asOf timestamp" }, 400);
+
+    const estimate = adapter.getEstimate(caskId, asOf);
     if (!estimate) return c.json({ error: "cask not found" }, 404);
     return c.json(estimate);
   });
@@ -83,25 +94,29 @@ async function bootstrap(): Promise<void> {
   });
 
   app.get("/casks/batch", (c) => {
-    const asOf = new Date().toISOString();
+    const asOf = parseAsOf(c.req.query("asOf"));
+    if (!asOf) return c.json({ error: "invalid asOf timestamp" }, 400);
     const ids = parseIdList(c.req.query("ids"));
     const limit = parseLimit(c.req.query("limit"), 20, 1, 50);
     return c.json(adapter.getCaskBatch(ids, limit, asOf));
   });
 
   app.get("/lifecycle/recent", (c) => {
-    const asOf = new Date().toISOString();
+    const asOf = parseAsOf(c.req.query("asOf"));
+    if (!asOf) return c.json({ error: "invalid asOf timestamp" }, 400);
     const limit = parseLimit(c.req.query("limit"), 100, 1, 200);
     return c.json(adapter.getRecentLifecycle(limit, asOf));
   });
 
   app.get("/portfolio/summary", (c) => {
-    const asOf = new Date().toISOString();
+    const asOf = parseAsOf(c.req.query("asOf"));
+    if (!asOf) return c.json({ error: "invalid asOf timestamp" }, 400);
     return c.json(adapter.getSummary(asOf));
   });
 
   app.get("/market-data", (c) => {
-    const asOf = new Date().toISOString();
+    const asOf = parseAsOf(c.req.query("asOf"));
+    if (!asOf) return c.json({ error: "invalid asOf timestamp" }, 400);
     return c.json(adapter.getMarketData(asOf));
   });
 
@@ -109,7 +124,10 @@ async function bootstrap(): Promise<void> {
     const caskId = parseCaskId(c.req.param("id"));
     if (!caskId) return c.json({ error: "invalid cask id" }, 400);
 
-    const valuation = adapter.getReferenceValuation(caskId, new Date().toISOString());
+    const asOf = parseAsOf(c.req.query("asOf"));
+    if (!asOf) return c.json({ error: "invalid asOf timestamp" }, 400);
+
+    const valuation = adapter.getReferenceValuation(caskId, asOf);
     if (!valuation) return c.json({ error: "cask not found" }, 404);
     return c.json(valuation);
   });

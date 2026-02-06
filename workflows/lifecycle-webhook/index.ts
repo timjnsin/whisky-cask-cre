@@ -2,10 +2,11 @@ import { z } from "zod";
 import { mapLifecycleEventToContractReport } from "../shared/contract-mapping.js";
 import {
   baseCreConfigSchema,
-  httpPostJson,
   loadCreSdk,
+  resolveSnapshotAsOf,
   sendErrorToCre,
   submitReport,
+  type CreRuntime,
   type CreSdkModule,
 } from "../shared/cre-runtime.js";
 import { encodeLifecycleReport } from "../shared/report-encoding.js";
@@ -18,20 +19,6 @@ const lifecycleWebhookPayloadSchema = z.object({
   gaugeProof: z.number().nonnegative().optional(),
   reason: z.enum(["regauge", "transfer", "bottling"]).optional(),
   timestamp: z.string().datetime().optional(),
-});
-
-const lifecyclePostResponseSchema = z.object({
-  ok: z.boolean(),
-  event: z.object({
-    caskId: z.number().int().positive(),
-    fromState: z.enum(["filled", "maturation", "regauged", "transfer", "bottling_ready", "bottled"]),
-    toState: z.enum(["filled", "maturation", "regauged", "transfer", "bottling_ready", "bottled"]),
-    timestamp: z.string().datetime(),
-    gaugeProofGallons: z.number().nonnegative(),
-    gaugeWineGallons: z.number().nonnegative(),
-    gaugeProof: z.number().nonnegative(),
-    reason: z.enum(["fill", "regauge", "transfer", "bottling", "reconcile"]),
-  }),
 });
 
 const authorizedKeySchema = z.object({
@@ -47,6 +34,10 @@ type WorkflowConfig = z.infer<typeof configSchema>;
 
 interface HttpTriggerPayload {
   input: Uint8Array;
+}
+
+function isHttpTriggerPayload(payload: unknown): payload is HttpTriggerPayload {
+  return typeof payload === "object" && payload !== null && "input" in payload;
 }
 
 function parseIncomingPayload(payload: HttpTriggerPayload): z.infer<typeof lifecycleWebhookPayloadSchema> {
@@ -70,35 +61,35 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
   const trigger = httpTrigger.trigger({ authorizedKeys: config.webhookAuthorizedKeys });
 
   return [
-    sdk.cre.handler(trigger, (runtime: any, triggerPayload: unknown) => {
-      const incomingPayload = parseIncomingPayload(triggerPayload as HttpTriggerPayload);
-      const lifecycleResponse = lifecyclePostResponseSchema.parse(
-        httpPostJson<unknown, typeof incomingPayload, WorkflowConfig>(
-          sdk,
-          runtime,
-          "/events/lifecycle",
-          incomingPayload,
-        ),
-      );
-
-      if (!lifecycleResponse.ok) {
-        throw new Error("Warehouse lifecycle API returned ok=false");
+    sdk.cre.handler(trigger, (runtime: CreRuntime<WorkflowConfig>, triggerPayload: unknown) => {
+      if (!isHttpTriggerPayload(triggerPayload)) {
+        throw new Error("Invalid HTTP trigger payload shape");
       }
 
-      const lifecycleReport = mapLifecycleEventToContractReport(lifecycleResponse.event);
+      const incomingPayload = parseIncomingPayload(triggerPayload);
+      const defaultTimestamp = resolveSnapshotAsOf(runtime, triggerPayload);
+
+      const lifecycleReport = mapLifecycleEventToContractReport({
+        caskId: incomingPayload.caskId,
+        toState: incomingPayload.toState,
+        timestamp: incomingPayload.timestamp ?? defaultTimestamp,
+        gaugeProofGallons: incomingPayload.gaugeProofGallons ?? 0,
+        gaugeWineGallons: incomingPayload.gaugeWineGallons ?? 0,
+        gaugeProof: incomingPayload.gaugeProof ?? 0,
+      });
+
       const encodedReport = encodeLifecycleReport(lifecycleReport);
       const submission = submitReport(sdk, runtime, encodedReport);
 
       runtime.log(
-        `[lifecycle-webhook] cask=${lifecycleResponse.event.caskId} to=${lifecycleResponse.event.toState}`,
+        `[lifecycle-webhook] cask=${incomingPayload.caskId} to=${incomingPayload.toState} source=trigger`,
       );
 
       return {
         workflow: "lifecycle-webhook",
-        caskId: lifecycleResponse.event.caskId,
-        fromState: lifecycleResponse.event.fromState,
-        toState: lifecycleResponse.event.toState,
-        timestamp: lifecycleResponse.event.timestamp,
+        caskId: incomingPayload.caskId,
+        toState: incomingPayload.toState,
+        timestamp: incomingPayload.timestamp ?? defaultTimestamp,
         reportBytes: encodedReport.length / 2 - 1,
         ...submission,
       };
@@ -108,8 +99,8 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
 
 export async function main() {
   const sdk = await loadCreSdk();
-  const runner = await sdk.Runner.newRunner({ configSchema });
-  await runner.run((config) => initWorkflow(sdk, config as WorkflowConfig));
+  const runner = await sdk.Runner.newRunner<WorkflowConfig>({ configSchema });
+  await runner.run((config) => initWorkflow(sdk, config));
 }
 
 main().catch(sendErrorToCre);

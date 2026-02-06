@@ -4,9 +4,12 @@ import {
   baseCreConfigSchema,
   httpGetJson,
   loadCreSdk,
+  resolveSnapshotAsOf,
   resolveTotalTokenSupply,
   sendErrorToCre,
   submitReport,
+  withAsOf,
+  type CreRuntime,
   type CreSdkModule,
 } from "../shared/cre-runtime.js";
 import { encodeReservePrivateReport, encodeReservePublicReport } from "../shared/report-encoding.js";
@@ -18,10 +21,6 @@ const configSchema = baseCreConfigSchema.extend({
 });
 
 type WorkflowConfig = z.infer<typeof configSchema>;
-
-function nowUnixSeconds(): bigint {
-  return BigInt(Math.floor(Date.now() / 1000));
-}
 
 function reserveRatioScaled(
   physicalCaskCount: number,
@@ -39,10 +38,13 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
   const trigger = cron.trigger({ schedule: config.schedule });
 
   return [
-    sdk.cre.handler(trigger, (runtime: any) => {
-      const inventory = httpGetJson<InventoryResponse, WorkflowConfig>(sdk, runtime, "/inventory");
+    sdk.cre.handler(trigger, (runtime: CreRuntime<WorkflowConfig>, triggerPayload: unknown) => {
+      const snapshotAsOf = resolveSnapshotAsOf(runtime, triggerPayload);
+      const inventoryPath = withAsOf("/inventory", snapshotAsOf);
+
+      const inventory = httpGetJson<InventoryResponse, WorkflowConfig>(sdk, runtime, inventoryPath);
       const totalTokenSupply = resolveTotalTokenSupply(sdk, runtime);
-      const timestamp = nowUnixSeconds();
+      const timestamp = BigInt(Math.floor(new Date(snapshotAsOf).getTime() / 1000));
 
       runtime.log(
         `[proof-of-reserve] active=${inventory.physical_cask_count} attestation=${inventory.attestation_hash}`,
@@ -63,6 +65,7 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
         return {
           workflow: "proof-of-reserve",
           mode: "confidential",
+          asOf: snapshotAsOf,
           isFullyReserved,
           physicalCaskCount: inventory.physical_cask_count,
           totalTokenSupply: totalTokenSupply.toString(),
@@ -91,6 +94,7 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
       return {
         workflow: "proof-of-reserve",
         mode: "public",
+        asOf: snapshotAsOf,
         physicalCaskCount: inventory.physical_cask_count,
         totalTokenSupply: totalTokenSupply.toString(),
         tokensPerCask: runtime.config.tokensPerCask,
@@ -105,9 +109,8 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
 
 export async function main() {
   const sdk = await loadCreSdk();
-  const runner = await sdk.Runner.newRunner({ configSchema });
-  await runner.run((config) => initWorkflow(sdk, config as WorkflowConfig));
+  const runner = await sdk.Runner.newRunner<WorkflowConfig>({ configSchema });
+  await runner.run((config: WorkflowConfig) => initWorkflow(sdk, config));
 }
 
 main().catch(sendErrorToCre);
-

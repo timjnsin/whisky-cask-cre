@@ -28,6 +28,8 @@ All gauge records are tracked in TTB-native units:
   - deterministic outputs and low-friction debugging
 - CRE runtime loop:
   - `index.ts` workflow entrypoints using `Runner`, triggers, HTTP/EVM capabilities, and `writeReport`
+  - cron workflows pass shared `asOf` timestamps to API reads for deterministic DON consensus
+  - webhook workflow uses trigger payload directly in CRE path (no side-effecting HTTP POST in node mode)
   - report payloads encoded to match `WhiskyCaskVault.onReport` routing
 
 ## Trust Model (Current)

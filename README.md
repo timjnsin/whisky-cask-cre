@@ -71,11 +71,21 @@ npm run simulate:all
 - `GET /cask/:id/reference-valuation`
 - `POST /events/lifecycle`
 
+Deterministic snapshot reads support `?asOf=<ISO-8601>` on:
+
+- `/inventory`
+- `/casks/batch`
+- `/lifecycle/recent`
+- `/portfolio/summary`
+- `/market-data`
+- `/cask/:id/estimate`
+- `/cask/:id/reference-valuation`
+
 Execution budgets are CRE-safe:
 
 - Proof of reserve: `1 HTTP + 1 EVM read + 1 EVM write`
 - Physical attributes: `2 HTTP + 1 EVM write`
-- Lifecycle webhook: `0-1 HTTP + 1 EVM write`
+- Lifecycle webhook: `0 HTTP + 1 EVM write` (uses signed trigger payload directly in CRE runtime path)
 - Lifecycle reconcile: `1 HTTP + 1 EVM write`
 
 ## Config

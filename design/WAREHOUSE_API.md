@@ -78,10 +78,20 @@ Each cask's gauge record exposes these fields — directly mapped from TTB-manda
 
 To stay within CRE HTTP execution limits, the API exposes batch/reconcile routes:
 
-- `GET /casks/batch?ids=1,2,3&limit=20`
+- `GET /casks/batch?ids=1,2,3&limit=20&asOf=<ISO-8601>`
   - Returns `gaugeRecord + estimate` for each requested cask in one response.
-- `GET /lifecycle/recent?limit=100`
+- `GET /lifecycle/recent?limit=100&asOf=<ISO-8601>`
   - Returns recent lifecycle events across casks for reconcile workflow replay.
+
+Cron workflows should also pass `asOf` to:
+
+- `GET /inventory`
+- `GET /portfolio/summary`
+- `GET /market-data`
+- `GET /cask/:id/estimate`
+- `GET /cask/:id/reference-valuation`
+
+This ensures all DON nodes evaluate the same snapshot time when using identical consensus aggregation.
 
 ## Seed Portfolio Design
 

@@ -8,8 +8,11 @@ import {
   baseCreConfigSchema,
   httpGetJson,
   loadCreSdk,
+  resolveSnapshotAsOf,
   sendErrorToCre,
   submitReport,
+  withAsOf,
+  type CreRuntime,
   type CreSdkModule,
 } from "../shared/cre-runtime.js";
 import { encodeCaskBatchReport } from "../shared/report-encoding.js";
@@ -35,14 +38,15 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
   const trigger = cron.trigger({ schedule: config.schedule });
 
   return [
-    sdk.cre.handler(trigger, (runtime: any) => {
+    sdk.cre.handler(trigger, (runtime: CreRuntime<WorkflowConfig>, triggerPayload: unknown) => {
+      const snapshotAsOf = resolveSnapshotAsOf(runtime, triggerPayload);
       const summary = httpGetJson<PortfolioSummaryResponse, WorkflowConfig>(
         sdk,
         runtime,
-        "/portfolio/summary",
+        withAsOf("/portfolio/summary", snapshotAsOf),
       );
       const targetIds = summary.recentlyChangedCaskIds.slice(0, runtime.config.maxBatchSize);
-      const batchPath = buildBatchPath(targetIds, runtime.config.maxBatchSize);
+      const batchPath = withAsOf(buildBatchPath(targetIds, runtime.config.maxBatchSize), snapshotAsOf);
 
       const batch = httpGetJson<CaskBatchResponse, WorkflowConfig>(sdk, runtime, batchPath);
       const updates = batch.items.map(mapBatchItemToContractInput);
@@ -51,6 +55,7 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
         runtime.log("[physical-attributes] no casks returned by /casks/batch");
         return {
           workflow: "physical-attributes",
+          asOf: snapshotAsOf,
           scannedSummaryCasks: summary.totalCasks,
           changedHintCount: summary.recentlyChangedCaskIds.length,
           selectedBatchCount: 0,
@@ -68,6 +73,7 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
 
       return {
         workflow: "physical-attributes",
+        asOf: snapshotAsOf,
         scannedSummaryCasks: summary.totalCasks,
         changedHintCount: summary.recentlyChangedCaskIds.length,
         selectedBatchCount: updates.length,
@@ -81,9 +87,8 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
 
 export async function main() {
   const sdk = await loadCreSdk();
-  const runner = await sdk.Runner.newRunner({ configSchema });
-  await runner.run((config) => initWorkflow(sdk, config as WorkflowConfig));
+  const runner = await sdk.Runner.newRunner<WorkflowConfig>({ configSchema });
+  await runner.run((config: WorkflowConfig) => initWorkflow(sdk, config));
 }
 
 main().catch(sendErrorToCre);
-

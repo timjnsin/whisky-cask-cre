@@ -10,7 +10,7 @@ Architecture has 3 components, implemented as 4 workflows to remove trigger ambi
 |----------|---------|------|----------|-----------|
 | Proof of Reserve | Cron hourly | 1 | 1 | 1 |
 | Physical Attribute Oracle | Cron daily | 2 | 0 | 1 |
-| Lifecycle Webhook | HTTP webhook | 0-1 | 0 | 1 |
+| Lifecycle Webhook | HTTP webhook | 0 | 0 | 1 |
 | Lifecycle Reconcile | Cron daily | 1 | 0 | 1 |
 
 ## Implementation Paths
@@ -41,10 +41,16 @@ Runtime entrypoints:
 
 - Proof of Reserve: 1 HTTP (`/inventory`) + 1 EVM read (`totalMinted()`) + 1 EVM write
 - Physical Attribute Oracle: 2 HTTP (`/portfolio/summary` + `/casks/batch`) + 1 EVM write (batch)
-- Lifecycle Webhook: up to 1 HTTP + 1 EVM write
+- Lifecycle Webhook: 0 HTTP + 1 EVM write (trigger payload is canonical source in CRE runtime path)
 - Lifecycle Reconcile: 1 HTTP (`/lifecycle/recent`) + 1 EVM write
 
 All are within expected CRE execution limits for hackathon scope.
+
+## Deterministic Snapshot Strategy
+
+- Cron workflows derive a shared snapshot timestamp from trigger payload (`scheduledExecutionTime`) and append it as `asOf` query param.
+- Warehouse API supports `asOf` across key read endpoints to avoid node-by-node timestamp drift during `consensusIdenticalAggregation`.
+- This keeps CRE node responses byte-stable for consensus while preserving TTB-shaped response schemas.
 
 ## Report Envelope Contract
 

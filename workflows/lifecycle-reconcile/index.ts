@@ -5,8 +5,11 @@ import {
   baseCreConfigSchema,
   httpGetJson,
   loadCreSdk,
+  resolveSnapshotAsOf,
   sendErrorToCre,
   submitReport,
+  withAsOf,
+  type CreRuntime,
   type CreSdkModule,
 } from "../shared/cre-runtime.js";
 import { encodeLifecycleReport } from "../shared/report-encoding.js";
@@ -23,17 +26,19 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
   const trigger = cron.trigger({ schedule: config.schedule });
 
   return [
-    sdk.cre.handler(trigger, (runtime: any) => {
+    sdk.cre.handler(trigger, (runtime: CreRuntime<WorkflowConfig>, triggerPayload: unknown) => {
+      const snapshotAsOf = resolveSnapshotAsOf(runtime, triggerPayload);
       const recent = httpGetJson<RecentLifecycleResponse, WorkflowConfig>(
         sdk,
         runtime,
-        `/lifecycle/recent?limit=${runtime.config.scanLimit}`,
+        withAsOf(`/lifecycle/recent?limit=${runtime.config.scanLimit}`, snapshotAsOf),
       );
 
       if (recent.events.length === 0) {
         runtime.log("[lifecycle-reconcile] no lifecycle events found");
         return {
           workflow: "lifecycle-reconcile",
+          asOf: snapshotAsOf,
           scannedEvents: 0,
           submitted: false,
           reason: "no-events",
@@ -51,6 +56,7 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
 
       return {
         workflow: "lifecycle-reconcile",
+        asOf: snapshotAsOf,
         scannedEvents: recent.count,
         latestEvent: {
           caskId: latestEvent.caskId,
@@ -66,9 +72,8 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
 
 export async function main() {
   const sdk = await loadCreSdk();
-  const runner = await sdk.Runner.newRunner({ configSchema });
-  await runner.run((config) => initWorkflow(sdk, config as WorkflowConfig));
+  const runner = await sdk.Runner.newRunner<WorkflowConfig>({ configSchema });
+  await runner.run((config: WorkflowConfig) => initWorkflow(sdk, config));
 }
 
 main().catch(sendErrorToCre);
-

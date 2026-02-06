@@ -51,16 +51,7 @@ export function encodeReservePublicReport(payload: ReserveAttestationPublicPaylo
         ],
       },
     ],
-    [
-      [
-        payload.physicalCaskCount,
-        payload.totalTokenSupply,
-        payload.tokensPerCask,
-        payload.reserveRatio,
-        payload.timestamp,
-        payload.attestationHash,
-      ],
-    ] as any,
+    [payload],
   );
 
   return wrapReport(REPORT_TYPE.RESERVE_PUBLIC, encodedPayload);
@@ -80,7 +71,7 @@ export function encodeReservePrivateReport(payload: ReserveAttestationPrivatePay
         ],
       },
     ],
-    [[payload.isFullyReserved, payload.timestamp, payload.attestationHash]] as any,
+    [payload],
   );
 
   return wrapReport(REPORT_TYPE.RESERVE_PRIVATE, encodedPayload);
@@ -116,27 +107,7 @@ export function encodeCaskBatchReport(updates: ContractCaskAttributesInput[]): H
         ],
       },
     ],
-    [
-      updates.map((update) => [
-        update.caskId,
-        [
-          update.attributes.caskType,
-          update.attributes.spiritType,
-          update.attributes.fillDate,
-          update.attributes.entryProofGallons,
-          update.attributes.entryWineGallons,
-          update.attributes.entryProof,
-          update.attributes.lastGaugeProofGallons,
-          update.attributes.lastGaugeWineGallons,
-          update.attributes.lastGaugeProof,
-          update.attributes.lastGaugeDate,
-          update.attributes.lastGaugeMethod,
-          update.attributes.estimatedProofGallons,
-          update.attributes.state,
-          update.attributes.warehouseCode,
-        ],
-      ]),
-    ] as any,
+    [updates],
   );
 
   return wrapReport(REPORT_TYPE.CASK_BATCH, encodedPayload);
@@ -157,16 +128,7 @@ export function encodeLifecycleReport(event: ContractLifecycleReport): Hex {
         ],
       },
     ],
-    [
-      [
-        event.caskId,
-        event.toState,
-        event.timestamp,
-        event.gaugeProofGallons,
-        event.gaugeWineGallons,
-        event.gaugeProof,
-      ],
-    ] as any,
+    [event],
   );
 
   return wrapReport(REPORT_TYPE.LIFECYCLE, encodedPayload);

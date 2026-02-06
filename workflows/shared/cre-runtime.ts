@@ -29,12 +29,23 @@ export const baseCreConfigSchema = z.object({
 
 export type BaseCreWorkflowConfig = z.infer<typeof baseCreConfigSchema>;
 
+export interface CreRuntime<TConfig> {
+  config: TConfig;
+  now(): Date;
+  log(message: string): void;
+  runInNodeMode<TArgs extends unknown[], TOutput>(
+    fn: (nodeRuntime: unknown, ...args: TArgs) => TOutput,
+    aggregation: unknown,
+  ): (...args: TArgs) => { result(): TOutput };
+  report(input: unknown): { result(): unknown };
+}
+
 export interface CreSdkModule {
   Runner: {
-    newRunner(params?: unknown): Promise<{
+    newRunner<TConfig>(params?: unknown): Promise<{
       run(
         initFn: (
-          config: unknown,
+          config: TConfig,
           secretsProvider: unknown,
         ) => Promise<ReadonlyArray<unknown>> | ReadonlyArray<unknown>,
       ): Promise<void>;
@@ -57,10 +68,7 @@ export interface CreSdkModule {
         };
       };
       EVMClient: new (chainSelector: bigint) => {
-        callContract(
-          runtime: unknown,
-          input: unknown,
-        ): { result(): { data: Uint8Array } };
+        callContract(runtime: unknown, input: unknown): { result(): { data: Uint8Array } };
         writeReport(
           runtime: unknown,
           input: unknown,
@@ -73,7 +81,10 @@ export interface CreSdkModule {
         };
       };
     };
-    handler(trigger: unknown, fn: (runtime: unknown, triggerOutput: unknown) => unknown): unknown;
+    handler<TConfig, TTriggerOutput, TResult>(
+      trigger: unknown,
+      fn: (runtime: CreRuntime<TConfig>, triggerOutput: TTriggerOutput) => TResult,
+    ): unknown;
   };
   consensusIdenticalAggregation<T>(): unknown;
   ok(response: unknown): boolean;
@@ -97,9 +108,58 @@ export interface CreSdkModule {
 
 let cachedSdk: Promise<CreSdkModule> | undefined;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function assertHasFunction(target: Record<string, unknown>, key: string, label: string): void {
+  if (typeof target[key] !== "function") {
+    throw new Error(`Invalid @chainlink/cre-sdk export: missing ${label}`);
+  }
+}
+
+function assertCreSdkModule(module: unknown): asserts module is CreSdkModule {
+  if (!isRecord(module)) {
+    throw new Error("Invalid @chainlink/cre-sdk export: module is not an object");
+  }
+
+  const runner = module.Runner;
+  const sendErrorResponse = module.sendErrorResponse;
+  const cre = module.cre;
+  const prepareReportRequest = module.prepareReportRequest;
+  const getNetwork = module.getNetwork;
+
+  if (!isRecord(runner) || !isRecord(cre)) {
+    throw new Error("Invalid @chainlink/cre-sdk export: missing Runner or cre");
+  }
+
+  assertHasFunction(runner, "newRunner", "Runner.newRunner");
+  if (typeof sendErrorResponse !== "function") {
+    throw new Error("Invalid @chainlink/cre-sdk export: missing sendErrorResponse");
+  }
+  assertHasFunction(cre, "handler", "cre.handler");
+  if (!isRecord(cre.capabilities)) {
+    throw new Error("Invalid @chainlink/cre-sdk export: missing cre.capabilities");
+  }
+
+  const capabilities = cre.capabilities as Record<string, unknown>;
+  for (const cap of ["CronCapability", "HTTPCapability", "HTTPClient", "EVMClient"]) {
+    if (typeof capabilities[cap] !== "function") {
+      throw new Error(`Invalid @chainlink/cre-sdk export: missing cre.capabilities.${cap}`);
+    }
+  }
+
+  if (typeof prepareReportRequest !== "function" || typeof getNetwork !== "function") {
+    throw new Error("Invalid @chainlink/cre-sdk export: missing prepareReportRequest or getNetwork");
+  }
+}
+
 export async function loadCreSdk(): Promise<CreSdkModule> {
   if (!cachedSdk) {
-    cachedSdk = import("@chainlink/cre-sdk").then((module) => module as unknown as CreSdkModule);
+    cachedSdk = import("@chainlink/cre-sdk").then((module) => {
+      assertCreSdkModule(module);
+      return module;
+    });
   }
   return cachedSdk;
 }
@@ -137,6 +197,74 @@ function parseJson<T>(raw: string, label: string): T {
   }
 }
 
+function parseIsoTimestamp(value: unknown): string | undefined {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return undefined;
+}
+
+function parseProtoTimestamp(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const seconds = value.seconds;
+  const nanos = value.nanos;
+  if (
+    (typeof seconds !== "string" && typeof seconds !== "number" && typeof seconds !== "bigint") ||
+    (nanos !== undefined && typeof nanos !== "number")
+  ) {
+    return undefined;
+  }
+
+  const secondsBigInt = BigInt(seconds);
+  const nanosNumber = typeof nanos === "number" ? nanos : 0;
+  const millis = Number(secondsBigInt * 1000n) + Math.floor(nanosNumber / 1_000_000);
+  const parsed = new Date(millis);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString();
+}
+
+function floorToMinute(date: Date): Date {
+  const copy = new Date(date.getTime());
+  copy.setUTCSeconds(0, 0);
+  return copy;
+}
+
+export function resolveSnapshotAsOf<TConfig>(
+  runtime: Pick<CreRuntime<TConfig>, "now">,
+  triggerPayload: unknown,
+): string {
+  if (isRecord(triggerPayload)) {
+    const candidates = [
+      triggerPayload.scheduledExecutionTime,
+      triggerPayload.scheduled_execution_time,
+      triggerPayload.timestamp,
+      triggerPayload.asOf,
+      triggerPayload.as_of,
+    ];
+
+    for (const candidate of candidates) {
+      const iso = parseIsoTimestamp(candidate) ?? parseProtoTimestamp(candidate);
+      if (iso) return iso;
+    }
+  }
+
+  return floorToMinute(runtime.now()).toISOString();
+}
+
+export function withAsOf(path: string, asOf: string): string {
+  const [pathname, queryString] = path.split("?", 2);
+  const params = new URLSearchParams(queryString ?? "");
+  params.set("asOf", asOf);
+  return `${pathname}?${params.toString()}`;
+}
+
 function getEvmClient(sdk: CreSdkModule, chainSelectorName: string): {
   evmClient: InstanceType<CreSdkModule["cre"]["capabilities"]["EVMClient"]>;
   normalizedChainSelectorName: string;
@@ -159,20 +287,14 @@ function getEvmClient(sdk: CreSdkModule, chainSelectorName: string): {
 
 export function httpGetJson<T, TConfig extends { apiBaseUrl: string }>(
   sdk: CreSdkModule,
-  runtime: {
-    config: TConfig;
-    runInNodeMode(
-      fn: (nodeRuntime: unknown, ...args: unknown[]) => unknown,
-      aggregation: unknown,
-    ): (...args: unknown[]) => { result(): unknown };
-  },
+  runtime: Pick<CreRuntime<TConfig>, "config" | "runInNodeMode">,
   path: string,
 ): T {
   const url = buildUrl(runtime.config.apiBaseUrl, path);
 
   const raw = runtime
     .runInNodeMode(
-      (nodeRuntime, requestUrl) => {
+      (nodeRuntime, requestUrl: string) => {
         const httpClient = new sdk.cre.capabilities.HTTPClient();
         const response = httpClient
           .sendRequest(nodeRuntime, {
@@ -185,7 +307,7 @@ export function httpGetJson<T, TConfig extends { apiBaseUrl: string }>(
         const responseBody = sdk.text(response);
         if (!sdk.ok(response)) {
           throw new Error(
-            `GET ${String(requestUrl)} failed: ${response.statusCode} ${responseBody.slice(0, 200)}`,
+            `GET ${requestUrl} failed: ${response.statusCode} ${responseBody.slice(0, 200)}`,
           );
         }
 
@@ -193,7 +315,7 @@ export function httpGetJson<T, TConfig extends { apiBaseUrl: string }>(
       },
       sdk.consensusIdenticalAggregation<string>(),
     )(url)
-    .result() as string;
+    .result();
 
   return parseJson<T>(raw, `GET ${url}`);
 }
@@ -206,13 +328,7 @@ export function httpPostJson<
   },
 >(
   sdk: CreSdkModule,
-  runtime: {
-    config: TConfig;
-    runInNodeMode(
-      fn: (nodeRuntime: unknown, ...args: unknown[]) => unknown,
-      aggregation: unknown,
-    ): (...args: unknown[]) => { result(): unknown };
-  },
+  runtime: Pick<CreRuntime<TConfig>, "config" | "runInNodeMode">,
   path: string,
   body: TBody,
 ): TResponse {
@@ -221,7 +337,7 @@ export function httpPostJson<
 
   const raw = runtime
     .runInNodeMode(
-      (nodeRuntime, requestUrl, requestBodyText) => {
+      (nodeRuntime, requestUrl: string, requestBodyText: string) => {
         const httpClient = new sdk.cre.capabilities.HTTPClient();
         const response = httpClient
           .sendRequest(nodeRuntime, {
@@ -231,14 +347,15 @@ export function httpPostJson<
               Accept: "application/json",
               "Content-Type": "application/json",
             },
-            body: Buffer.from(String(requestBodyText), "utf8").toString("base64"),
+            // SDK request body is protobuf bytes; JSON transport uses base64 for byte fields.
+            body: Buffer.from(requestBodyText, "utf8").toString("base64"),
           })
           .result();
 
         const responseBody = sdk.text(response);
         if (!sdk.ok(response)) {
           throw new Error(
-            `POST ${String(requestUrl)} failed: ${response.statusCode} ${responseBody.slice(0, 200)}`,
+            `POST ${requestUrl} failed: ${response.statusCode} ${responseBody.slice(0, 200)}`,
           );
         }
 
@@ -246,17 +363,14 @@ export function httpPostJson<
       },
       sdk.consensusIdenticalAggregation<string>(),
     )(url, bodyText)
-    .result() as string;
+    .result();
 
   return parseJson<TResponse>(raw, `POST ${url}`);
 }
 
 export function resolveTotalTokenSupply(
   sdk: CreSdkModule,
-  runtime: {
-    config: BaseCreWorkflowConfig;
-    log(message: string): void;
-  },
+  runtime: Pick<CreRuntime<BaseCreWorkflowConfig>, "config" | "log">,
 ): bigint {
   const fallback = runtime.config.tokenSupplyUnits;
 
@@ -319,11 +433,7 @@ export interface ReportSubmissionResult {
 
 export function submitReport(
   sdk: CreSdkModule,
-  runtime: {
-    config: BaseCreWorkflowConfig;
-    log(message: string): void;
-    report(input: unknown): { result(): unknown };
-  },
+  runtime: Pick<CreRuntime<BaseCreWorkflowConfig>, "config" | "log" | "report">,
   encodedReport: Hex,
 ): ReportSubmissionResult {
   const { normalizedChainSelectorName, evmClient } = getEvmClient(sdk, runtime.config.chainSelector);
