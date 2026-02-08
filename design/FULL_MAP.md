@@ -7,7 +7,7 @@ These rules are the canonical constraints for every design doc in this repositor
 1. Oracle scope is **physical attributes + reserve status + lifecycle provenance**. This is **not** a NAV oracle.
 2. Dollar valuation is optional Tier 3 reference data and is not required for core onchain infrastructure.
 3. API runtime is **TypeScript + Hono on bun** for hackathon scope. No mixed FastAPI plan in active docs.
-4. Proof of reserve uses `TOKENS_PER_CASK = 1000` vault units to normalize cask count vs ERC-1155 token units.
+4. Proof of reserve uses `TOKENS_PER_CASK = 1000` vault units to normalize cask count vs token supply units.
 5. Confidential mode must not reveal raw inventory counts onchain. Only `isFullyReserved` + attestation hash.
 6. Baseline simulation mode may include raw counts for debugging, but privacy track narrative must use confidential mode semantics.
 7. `FULL_MAP.md` is the source of truth. Other docs must mirror terminology, workflow names, and assumptions.
@@ -476,7 +476,7 @@ Architecture has 3 components, implemented as 4 workflows to remove trigger ambi
 
 ### Workflow 2: Physical Attribute Oracle
 - Cron daily (gauge records don't change fast)
-- HTTP -> `/portfolio/summary` + `/cask/{id}/gauge-record` for recently changed casks (2 calls)
+- HTTP -> `/portfolio/summary` + `/casks/batch` for recently changed casks (2 calls)
 - EVM WRITE -> batch update cask gauge records
 - **Budget: 2 HTTP, 0 EVM reads, 1 EVM write**
 
@@ -487,7 +487,7 @@ Architecture has 3 components, implemented as 4 workflows to remove trigger ambi
 
 ### Workflow 4: Lifecycle Reconcile
 - Cron daily fallback to catch missed events
-- HTTP -> `/cask/{id}/lifecycle` (1 call)
+- HTTP -> `/lifecycle/recent` (1 call)
 - EVM WRITE -> lifecycle event replay for missed transitions
 - **Budget: 1 HTTP, 0 EVM reads, 1 EVM write**
 

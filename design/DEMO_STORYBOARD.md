@@ -43,26 +43,26 @@ Quick hit of:
 > "Now the proof-of-reserve workflow."
 
 Show:
-1. `cre workflow simulate proof-of-reserve --non-interactive`
-2. Console output: "Inventory casks: 47... Token supply units: 47000... TOKENS_PER_CASK: 1000... Backing ratio: 1.0... Attestation submitted"
-3. Quick Sepolia verification of reserve attestation event
+1. `cre workflow simulate workflows/proof-of-reserve -T staging-settings --non-interactive --trigger-index 0`
+2. Console output: "active=47... totalTokenSupply=47000... tokensPerCask=1000... reserveRatioScaled1e18=1000000000000000000... submitReports=false"
+3. Optional Sepolia verification if `submitReports=true` with a funded deployer key
 
 #### Part C: CRE Simulation - Physical Attribute Oracle (30 sec)
 **Visual:** Terminal
 > "Now the physical attribute oracle."
 
 Show:
-1. `cre workflow simulate physical-attributes --non-interactive`
+1. `cre workflow simulate workflows/physical-attributes -T staging-settings --non-interactive --trigger-index 0`
 2. Console output: "47 gauge records updated... estimate model: angels_share_v1"
 3. Read from contract: `getCaskAttributes(1)` — show proof gallons, cooperage, last gauge date
 
 #### Part D: CRE Simulation - Lifecycle (30 sec)
 **Visual:** Terminal + contract read
-> "And a lifecycle transition: cask 7 was regauged."
+> "And a lifecycle transition: cask 7 moves from regauged to transfer."
 
 Show:
-1. Trigger via HTTP payload: `{"cask_id": 7, "new_state": "regauged", "proof_gallons": 46.50, "wine_gallons": 39.25, "proof": 118.5}`
-2. Console output: "Lifecycle transition recorded: cask 7, maturation -> regauged, 46.50 PG"
+1. Trigger via HTTP payload: `{"caskId": 7, "toState": "transfer", "gaugeProofGallons": 46.5, "gaugeWineGallons": 39.25, "gaugeProof": 118.5}`
+2. Console output: "Lifecycle transition recorded: cask 7, regauged -> transfer, 46.50 PG"
 3. Contract read: `getCaskAttributes(7)` — show updated gauge data
 4. `LifecycleTransition` event visible on Sepolia explorer with proof gallon values
 

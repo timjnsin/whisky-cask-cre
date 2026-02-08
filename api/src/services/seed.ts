@@ -110,6 +110,12 @@ function maxIso(a: string, b: string): string {
   return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
 }
 
+function addDays(iso: string, days: number): string {
+  const dt = new Date(iso);
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString();
+}
+
 export function generatePortfolioData(asOf = new Date().toISOString()): PortfolioData {
   const rng = new SeededRng("whisky-cask-cre-ttb-v1");
 
@@ -128,24 +134,32 @@ export function generatePortfolioData(asOf = new Date().toISOString()): Portfoli
     const qualityFactor = round2(0.95 + rng.next() * 0.04);
 
     const fillDate = subtractMonths(asOf, ageMonths);
-    const entryWineGallons = round2(CASK_CAPACITY_WG[caskType] * (0.95 + rng.next() * 0.1));
+    const entryWineGallons = round2(CASK_CAPACITY_WG[caskType] * (0.95 + rng.next() * 0.05));
     const entryProof = round1(118 + rng.next() * 10);
     const entryProofGallons = proofGallons(entryWineGallons, entryProof);
 
     const lastGaugeMethod = selectGaugeMethod(caskId, ageMonths, rng);
     const staleGauge = caskId % 4 === 0 && ageMonths >= 24;
+    const minNonEntryGaugeDate = addDays(fillDate, 30);
+    const candidateLastGaugeDate =
+      staleGauge
+        ? subtractDays(asOf, rng.int(1100, 1600))
+        : subtractDays(asOf, rng.int(30, 200));
     const lastGaugeDate =
       lastGaugeMethod === "entry"
         ? fillDate
-        : staleGauge
-          ? subtractDays(asOf, rng.int(1100, 1600))
-          : subtractDays(asOf, rng.int(30, 200));
+        : maxIso(candidateLastGaugeDate, minNonEntryGaugeDate);
 
-    const yearsToLastGauge = daysBetween(fillDate, lastGaugeDate) / 365;
-    const lastWineGallons = round2(entryWineGallons * Math.pow(1 - angelShareRate, yearsToLastGauge));
-    const proofDrift = lastGaugeMethod === "disgorge" ? rng.next() * 2 : rng.next() * 6;
-    const lastProof = round1(Math.max(95, entryProof - proofDrift));
-    const lastProofGallons = proofGallons(lastWineGallons, lastProof);
+    let lastWineGallons = entryWineGallons;
+    let lastProof = entryProof;
+    let lastProofGallons = entryProofGallons;
+    if (lastGaugeMethod !== "entry") {
+      const yearsToLastGauge = daysBetween(fillDate, lastGaugeDate) / 365;
+      lastWineGallons = round2(entryWineGallons * Math.pow(1 - angelShareRate, yearsToLastGauge));
+      const proofDrift = lastGaugeMethod === "disgorge" ? rng.next() * 2 : rng.next() * 6;
+      lastProof = round1(Math.max(95, entryProof - proofDrift));
+      lastProofGallons = proofGallons(lastWineGallons, lastProof);
+    }
 
     let state: LifecycleState = ageMonths < 4 ? "filled" : "maturation";
     if (lastGaugeMethod !== "entry") state = "regauged";

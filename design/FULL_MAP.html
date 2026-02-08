@@ -76,7 +76,7 @@
 <li>Oracle scope is <strong>physical attributes + reserve status + lifecycle provenance</strong>. This is <strong>not</strong> a NAV oracle.</li>
 <li>Dollar valuation is optional Tier 3 reference data and is not required for core onchain infrastructure.</li>
 <li>API runtime is <strong>TypeScript + Hono on bun</strong> for hackathon scope. No mixed FastAPI plan in active docs.</li>
-<li>Proof of reserve uses <code>TOKENS_PER_CASK = 1000</code> vault units to normalize cask count vs ERC-1155 token units.</li>
+<li>Proof of reserve uses <code>TOKENS_PER_CASK = 1000</code> vault units to normalize cask count vs token supply units.</li>
 <li>Confidential mode must not reveal raw inventory counts onchain. Only <code>isFullyReserved</code> + attestation hash.</li>
 <li>Baseline simulation mode may include raw counts for debugging, but privacy track narrative must use confidential mode semantics.</li>
 <li><code>FULL_MAP.md</code> is the source of truth. Other docs must mirror terminology, workflow names, and assumptions.</li>
@@ -563,7 +563,7 @@ struct ReserveAttestationPrivate {
 <td>Cask count, IDs, existence attestation</td>
 </tr>
 <tr>
-<td><code>GET /cask/{id}/attributes</code></td>
+<td><code>GET /cask/{id}/gauge-record</code></td>
 <td>1</td>
 <td>Type, fill date, entry gauge, last regauge, state, warehouse</td>
 </tr>
@@ -608,7 +608,7 @@ struct ReserveAttestationPrivate {
 <h3 id="workflow-2-physical-attribute-oracle">Workflow 2: Physical Attribute Oracle</h3>
 <ul>
 <li>Cron daily (attributes do not change fast)</li>
-<li>HTTP -&gt; <code>/portfolio/summary</code> + <code>/cask/{id}/attributes</code> for recently changed casks (2 calls)</li>
+<li>HTTP -&gt; <code>/portfolio/summary</code> + <code>/casks/batch</code> for recently changed casks (2 calls)</li>
 <li>EVM WRITE -&gt; batch update cask attributes</li>
 <li><strong>Budget: 2 HTTP, 0 EVM reads, 1 EVM write</strong></li>
 </ul>
@@ -621,7 +621,7 @@ struct ReserveAttestationPrivate {
 <h3 id="workflow-4-lifecycle-reconcile">Workflow 4: Lifecycle Reconcile</h3>
 <ul>
 <li>Cron daily fallback to catch missed events</li>
-<li>HTTP -&gt; <code>/cask/{id}/lifecycle</code> (1 call)</li>
+<li>HTTP -&gt; <code>/lifecycle/recent</code> (1 call)</li>
 <li>EVM WRITE -&gt; lifecycle event replay for missed transitions</li>
 <li><strong>Budget: 1 HTTP, 0 EVM reads, 1 EVM write</strong></li>
 </ul>

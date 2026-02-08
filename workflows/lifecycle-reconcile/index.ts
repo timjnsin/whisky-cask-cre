@@ -17,6 +17,7 @@ import { encodeLifecycleReport } from "../shared/report-encoding.js";
 const configSchema = baseCreConfigSchema.extend({
   schedule: z.string().default("0 10 3 * * *"),
   scanLimit: z.number().int().positive().max(200).default(100),
+  reconcileWindowHours: z.number().int().positive().max(24 * 30).default(48),
 });
 
 type WorkflowConfig = z.infer<typeof configSchema>;
@@ -45,24 +46,33 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
         };
       }
 
-      const latestEvent = recent.events[recent.events.length - 1];
-      const lifecycleReport = mapLifecycleEventToContractReport(latestEvent);
+      const orderedEvents = [...recent.events].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      const snapshotMs = new Date(snapshotAsOf).getTime();
+      const windowStartMs = snapshotMs - runtime.config.reconcileWindowHours * 60 * 60 * 1000;
+      const windowedEvents = orderedEvents.filter(
+        (event) => new Date(event.timestamp).getTime() >= windowStartMs,
+      );
+      const selectionMode = windowedEvents.length > 0 ? "window-oldest" : "latest-fallback";
+      const selectedEvents = windowedEvents.length > 0 ? windowedEvents : orderedEvents.slice(-1);
+      const nextEvent = selectedEvents[0];
+      const lifecycleReport = mapLifecycleEventToContractReport(nextEvent);
       const encodedReport = encodeLifecycleReport(lifecycleReport);
       const submission = submitReport(sdk, runtime, encodedReport);
 
       runtime.log(
-        `[lifecycle-reconcile] scanned=${recent.count} latestCask=${latestEvent.caskId} to=${latestEvent.toState}`,
+        `[lifecycle-reconcile] scanned=${recent.count} mode=${selectionMode} nextCask=${nextEvent.caskId} to=${nextEvent.toState}`,
       );
 
       return {
         workflow: "lifecycle-reconcile",
         asOf: snapshotAsOf,
         scannedEvents: recent.count,
-        latestEvent: {
-          caskId: latestEvent.caskId,
-          toState: latestEvent.toState,
-          timestamp: latestEvent.timestamp,
+        nextEvent: {
+          caskId: nextEvent.caskId,
+          toState: nextEvent.toState,
+          timestamp: nextEvent.timestamp,
         },
+        selectionMode,
         reportBytes: encodedReport.length / 2 - 1,
         ...submission,
       };

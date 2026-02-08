@@ -133,11 +133,14 @@ export function unixSeconds(isoTimestamp: string): bigint {
 }
 
 export function warehouseCodeHex(warehouseId: string): Hex {
-  const encodedBytes = Buffer.from(warehouseId, "utf8");
+  const encodedBytes = new TextEncoder().encode(warehouseId);
   if (encodedBytes.length > 16) {
     throw new Error(`warehouseId exceeds 16-byte limit: ${warehouseId}`);
   }
-  const encodedHex = encodedBytes.toString("hex");
+  let encodedHex = "";
+  for (const byte of encodedBytes) {
+    encodedHex += byte.toString(16).padStart(2, "0");
+  }
   return `0x${encodedHex.padEnd(32, "0")}` as Hex;
 }
 

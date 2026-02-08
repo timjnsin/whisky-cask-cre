@@ -89,7 +89,11 @@ interface IWhiskyCaskVault {
 
     function onReport(bytes calldata metadata, bytes calldata report) external;
 
+    function setPaused(bool isPaused) external;
+
     function getCaskAttributes(uint256 caskId) external view returns (CaskAttributes memory);
+
+    function caskExists(uint256 caskId) external view returns (bool);
 
     function latestPublicReserveAttestation()
         external

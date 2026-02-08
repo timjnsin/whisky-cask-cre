@@ -40,19 +40,19 @@ We built CRE infrastructure to change that."
 
 **NARRATION:**
 
-"Three CRE workflows. Each one fetches data from a warehouse API, reaches consensus across the DON, and writes a verified report to a Solidity contract on Sepolia.
+"Four CRE workflows across three core components. Each one fetches data from a warehouse API, reaches consensus across the DON, and writes a verified report to a Solidity contract on Sepolia.
 
 **Workflow 1: Proof of Reserve.** Runs hourly. Fetches the warehouse inventory count, reads the token supply from the contract, computes the reserve ratio, and writes an attestation onchain. If someone mints tokens without casks to back them, the ratio drops below 1.0 and everyone can see it.
 
-This is the core anti-fraud mechanism. If every token is backed by a CRE-attested inventory count, you cannot sell a barrel that doesn't exist.
+This is the core anti-fraud mechanism. If every token is backed by a CRE-attested inventory count, under-collateralization and double-selling attempts become rapidly detectable.
 
-**Workflow 2: Physical Attribute Oracle.** Runs daily. Fetches per-cask gauge records -- cask type, fill date, proof gallons, wine gallons, gauge method, warehouse code. Every field maps to a TTB-required measurement under 27 CFR 19.618. We also compute angel's share estimates, but those are clearly labeled as Tier 2 data -- math on top of measurements, not measurements themselves.
+**Workflow 2: Physical Attribute Oracle.** Runs daily. Fetches per-cask gauge records -- cask type, fill date, proof gallons, wine gallons, gauge method, warehouse code. Core gauge fields map to TTB-required measurements under 27 CFR 19.618. We also compute angel's share estimates, but those are clearly labeled as Tier 2 data -- math on top of measurements, not measurements themselves.
 
 Any lending protocol or secondary market can read these attributes directly from the contract and build their own risk model. They don't need to trust our valuation. They have the raw data.
 
 **Workflow 3: Lifecycle Provenance.** Event-driven. Records every state transition from fill to bottle as an immutable onchain event. Filled, maturation, regauged, transfer, bottling ready, bottled. Each transition carries gauge data when applicable. There's a webhook path for real-time events and a daily cron fallback to catch anything missed.
 
-The result is an unbroken chain of custody for every cask."
+The result is a verifiable lifecycle trail for every cask."
 
 ---
 
@@ -122,7 +122,7 @@ cre workflow simulate workflows/proof-of-reserve -T staging-settings --non-inter
 cd contracts && forge test -vvv
 ```
 
-"Nine Foundry tests covering the contract: ACL enforcement, report routing for all four report types, lifecycle state transitions, zero-gauge preservation, ownership transfer, invalid report rejection. All passing."
+"Seventeen Foundry tests covering the contract: ACL enforcement, report routing for all four report types, lifecycle state transitions, zero-gauge preservation, ownership transfer, invalid report rejection, replay/state-machine guards, and pause control. All passing."
 
 ---
 

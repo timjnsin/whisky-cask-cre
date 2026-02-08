@@ -4,10 +4,11 @@
 
 ## Summary
 
-ERC-1155 + IReceiver contract that accepts CRE reports through KeystoneForwarder `onReport()` and stores:
+Oracle receiver contract that accepts CRE reports through KeystoneForwarder `onReport()` and stores:
 - Per-cask gauge records using TTB-native units (proof gallons, wine gallons, proof degrees)
 - Proof-of-reserve attestations (public and confidential modes)
 - Lifecycle transition events
+- Operational safety controls (owner-managed pause switch for report-driven mutations)
 
 ## Locked Rules
 

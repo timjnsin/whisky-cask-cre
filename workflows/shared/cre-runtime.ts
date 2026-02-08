@@ -26,7 +26,7 @@ export const baseCreConfigSchema = z.object({
   tokensPerCask: z.number().int().positive().default(1000),
   attestationMode: z.enum(["public", "confidential"]).default("public"),
   tokenSupplyUnits: z.number().int().nonnegative().optional(),
-  submitReports: z.boolean().default(true),
+  submitReports: z.boolean().default(false),
   reportGasLimit: z.number().int().positive().optional(),
 });
 

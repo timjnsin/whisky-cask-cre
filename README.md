@@ -1,52 +1,36 @@
 # Whisky Cask CRE: Privacy-Preserving Proof of Reserve for Physical Assets
 
+CRE infrastructure that pipes legally mandated warehouse records onto a public blockchain — proof of reserve, per-cask physical attributes, and lifecycle provenance for tokenized whisky casks, with privacy-preserving attestation via Confidential HTTP.
+
 ## The Problem
 
-In 2025, Braeburn Whisky collapsed with $80 million in claimed cask assets. Thousands of investors couldn't verify whether their barrels existed. The same year, the BBC aired "Hunting the Whisky Bandits" -- documenting a convicted fraudster who sold phantom casks to 213 victims across multiple shell companies. In Tasmania, an audit of Nant Distillery revealed 1,300 barrels that didn't exist, with the same cask sold to multiple buyers.
+In 2025, Braeburn Whisky collapsed with $80 million in claimed cask assets. Thousands of investors couldn't verify whether their barrels existed. The same year, the BBC aired "Hunting the Whisky Bandits" — documenting a convicted fraudster who sold phantom casks to 213 victims across multiple shell companies. In Tasmania, an audit of Nant Distillery revealed 1,300 barrels that didn't exist, with the same cask sold to multiple buyers.
 
 This isn't a whisky problem. It's a structural problem. **There is no centralized ownership registry for whisky casks.** Each warehouse maintains its own ledger. No cross-referencing. No independent verification. No API. Investors receive PDFs, if they receive anything at all, and ownership transfers happen via paper Delivery Orders with no standard format.
 
-The irony: the underlying data is already regulated. In the US, bonded warehouses file monthly storage reports (TTB Form 5110.11) and maintain per-barrel gauge records under 27 CFR Part 19. The data that proves a cask exists, what's in it, and where it is -- that data is legally mandated. It's just locked in warehouse management systems, inaccessible to anyone outside.
-
-## Why Whisky
-
-Whisky is arguably the best-suited physical asset for tokenization:
-
-- **Anti-depreciation.** Aging *improves* the product. A barrel appreciates 13-22% CAGR from age 12 to 25. Name another physical asset where time increases value by design.
-- **Natural scarcity.** Angel's share (evaporation) removes 2-5% of volume per year. A 20-year cask has lost a third of its contents. Supply literally disappears. Scarcity isn't manufactured -- it's physics.
-- **Regulated custody.** Unlike gold in a vault, whisky sits in facilities regulated by federal law (TTB in US, HMRC in UK). Per-barrel records are legally mandated. Falsifying them is a criminal offense.
-- **Semi-fungible.** Unlike art or real estate, casks of the same distillery/age/type are substantially interchangeable within their cohort -- suitable for pooled ownership and tokenization.
-- **Consumption floor.** Independent bottlers and blenders always need aged stock. Even in a downturn, someone wants to bottle your whisky. This creates a demand floor that pure investment assets lack.
-
-39 million barrels of whisky are maturing in warehouses right now -- 22 million in Scotland, 16 million+ in Kentucky. Kentucky alone assesses its aging inventory at $10 billion for tax purposes. The total value of whisky aging globally is conservatively $30-50 billion.
-
-Billions of dollars in cask transactions happen every year. Bourbon barrels flow from Kentucky to Scotland ($300M+ annually), Mexico, the Caribbean, Japan, and India -- 90% of all Scotch matures in ex-bourbon wood. Non-distiller producers and craft distillers source hundreds of thousands of aged barrels from major producers (Brindiamo Group alone manages 260,000+ barrels; MGP Ingredients does $170M+ in quarterly revenue). Independent bottlers like Gordon & MacPhail, Signatory, and Douglas Laing buy thousands of casks commercially from distilleries every year. And the retail cask investment market -- CaskX sold 30,000+ bourbon casks in 2024; WhiskyInvestDirect holds 87,000+ -- is growing 33% year-over-year on top of all that.
-
-Every one of these transactions needs custody tracking. Every cask needs provenance from fill to bottle. All of it runs on paper Delivery Orders, proprietary warehouse ledgers, and PDFs.
-
-Scotland's Moveable Transactions Act (April 2025) just created statutory pledges over whisky casks -- for the first time, lenders can take security over barrels without physical delivery. They have the legal tools. What they don't have is the data infrastructure to verify what they're lending against.
+The irony: the underlying data is already regulated. In the US, bonded warehouses file monthly storage reports to the TTB (Alcohol and Tobacco Tax and Trade Bureau) and maintain per-barrel gauge records under federal law (27 CFR Part 19). The data that proves a cask exists, what's in it, and where it is — that data is legally mandated. It's just locked in warehouse management systems, inaccessible to anyone outside.
 
 ## What We Built
 
-Three CRE workflows that fetch warehouse data, reach DON consensus, and write verified reports to a Solidity contract. The core capability: **proof of reserve that makes under-collateralization and double-selling attempts rapidly detectable.**
+Four CRE workflows across three components — reserve attestation, physical attribute oracle, lifecycle provenance — each fetching warehouse data, reaching DON consensus, and writing verified reports to a Solidity contract on Sepolia.
 
 ```
 Warehouse API                CRE (DON consensus)           Smart Contract
--------------                -------------------           --------------
+─────────────                ───────────────────           ──────────────
 
-GET /inventory  ---------->  N nodes fetch independently,  ReserveAttestation
+GET /inventory  ──────────>  N nodes fetch independently,  ReserveAttestation
 (cask count,                 verify, reach BFT consensus   { physicalCaskCount,
  proof gallons,              on identical data               totalTokenSupply,
  attestation hash)                                           reserveRatio,
                                                              attestationHash }
 
-GET /casks/batch ----------> Consensus on per-cask         CaskAttributes[id]
+GET /casks/batch ─────────>  Consensus on per-cask         CaskAttributes[id]
 (gauge records,              attributes from warehouse     { caskType, fillDate,
  estimates)                  records                         entryProofGallons,
                                                              lastGaugeProofGallons,
                                                              state, warehouseCode }
 
-Webhook payload  ----------> Consensus on state            LifecycleTransition event
+Webhook payload  ─────────>  Consensus on state            LifecycleTransition event
 (cask regauged,              transition event              { caskId, fromState,
  new gauge data)                                             toState, timestamp,
                                                              gaugeProofGallons }
@@ -54,35 +38,39 @@ Webhook payload  ----------> Consensus on state            LifecycleTransition e
 
 ### 1. Proof of Reserve (hourly cron)
 
-Fetches warehouse inventory count, reads `totalMinted()` from the contract, computes reserve ratio, writes attestation onchain. If a token issuer claims 47 casks but the warehouse reports 45, the reserve ratio drops below 1.0 and everyone can see it. In confidential mode, only a boolean `isFullyReserved` is published -- the raw inventory count stays private.
+Fetches warehouse inventory count, reads `totalMinted()` from the contract, computes reserve ratio, writes attestation onchain. If a token issuer claims 47 casks but the warehouse reports 45, the reserve ratio drops below 1.0 and everyone can see it. In confidential mode, only a boolean `isFullyReserved` is published — the raw inventory count stays private.
 
 ### 2. Physical Attribute Oracle (daily cron)
 
-Fetches per-cask gauge records and angel's share estimates for recently changed casks. Writes batch updates to the contract. Core gauge fields map to TTB-required measurements: proof gallons, wine gallons, proof, gauge method, gauge date. Any lending protocol or secondary market can read these attributes and build their own risk model -- no need to trust ours.
+Fetches per-cask gauge records and angel's share estimates for recently changed casks. Writes batch updates to the contract. Core gauge fields map to TTB-required measurements under 27 CFR 19.618: proof gallons, wine gallons, proof, gauge method, gauge date. Any lending protocol or secondary market can read these attributes directly from the contract and build their own risk model — no need to trust ours.
 
 ### 3. Lifecycle Provenance (webhook + daily fallback)
 
-Records every state transition as an immutable onchain event: `filled -> maturation -> regauged -> transfer -> bottling_ready -> bottled`. Each transition carries gauge data when applicable. The webhook path requires zero HTTP calls (data arrives in the trigger payload, with signature authorization when keys are configured). A daily cron reconcile catches any missed events. The result is a verifiable lifecycle trail from fill to bottle.
+Records every state transition as an immutable onchain event: `filled → maturation → regauged → transfer → bottling_ready → bottled`. Each transition carries gauge data when applicable. The webhook path handles real-time events with zero HTTP calls (data arrives in the trigger payload); a daily cron reconcile catches anything missed. The result is a verifiable lifecycle trail from fill to bottle.
 
 ## Why Privacy Matters
 
 A warehouse's aggregate inventory is commercially sensitive. It reveals total barrel count (purchasing power), acquisition patterns (supplier relationships), and inventory velocity (business health signals). No warehouse will pipe raw inventory data to a public blockchain.
 
-TTB tracks the proprietor (DSP number), not the beneficial token holder. Privacy protects the warehouse operator's business data, not investor anonymity.
+Confidential HTTP lets DON nodes fetch inventory data where the response payload is encrypted. Nodes reach consensus and compute "casks ≥ tokens: true/false" without the raw count appearing onchain or in node logs. The contract stores a boolean `isFullyReserved`, not the number. The warehouse participates because its competitive position isn't exposed. (Note: TTB tracks the proprietor via DSP number, not the beneficial token holder — privacy here protects the warehouse operator's business data, not investor anonymity.)
 
-Confidential HTTP enables the proof-of-reserve workflow to attest "casks >= tokens" without revealing the actual count onchain. Full confidential transport semantics are pending Chainlink privacy details expected February 12, 2026; current implementation keeps raw inventory counts out of the onchain confidential report payload. The warehouse participates because its competitive position isn't exposed. Without this, the system is architecturally correct but commercially undeployable.
+Without this privacy layer, the system is architecturally correct but commercially undeployable.
 
-## What This Enables
+## Why Whisky
 
-1. **Cask-backed lending.** Scotland's Moveable Transactions Act (April 2025) created statutory pledges over whisky casks. Lenders have legal tools but no data infrastructure. Our oracle provides proof of existence, current physical measurements, and provenance trail -- the inputs a lender needs to price risk on whisky collateral.
+Whisky is arguably the best-suited physical asset for tokenization:
 
-2. **Institutional capital formation.** Fund managers can't deploy capital into assets they can't independently verify. Current process: fly to Scotland, visit warehouses, request regauges, cross-reference Delivery Orders. Our proof of reserve replaces point-in-time audits with continuous attestation. Any protocol can read the contract.
+- **Anti-depreciation.** Aging *improves* the product. A barrel appreciates 13–22% CAGR from age 12 to 25. Name another physical asset where time increases value by design.
+- **Natural scarcity.** Angel's share (evaporation) removes 2–5% of volume per year. A 20-year cask has lost a third of its contents. Scarcity isn't manufactured — it's physics.
+- **Regulated custody.** Unlike gold in a vault, whisky sits in facilities regulated by federal law (TTB in the US, HMRC in the UK). Per-barrel records are legally mandated. Falsifying them is a criminal offense.
+- **Semi-fungible.** Unlike art or real estate, casks of the same distillery/age/type are substantially interchangeable within their cohort — suitable for pooled ownership and tokenization.
+- **Consumption floor.** Independent bottlers and blenders always need aged stock. Even in a downturn, someone wants to bottle your whisky. This creates a demand floor that pure investment assets lack.
 
-3. **Secondary market liquidity.** The current secondary market has weeks-long settlement and 20-40% round-trip friction. Tokenized casks with verified on-chain attributes enable automated price discovery based on real data, composable DeFi integration, and near-instant settlement.
+39 million barrels are maturing in warehouses worldwide — Kentucky alone assesses its aging inventory at $10 billion for tax purposes. Billions in cask transactions happen every year: barrel trade between distilleries, sourcing by non-distiller producers, independent bottler purchases, and retail investment sales. All tracked on paper. Scotland's Moveable Transactions Act (April 2025) created statutory pledges over whisky casks for the first time — lenders now have legal tools for cask-backed finance but no data infrastructure to verify collateral.
 
 ## Data Honesty
 
-We use TTB-native units throughout: proof gallons (PG) and wine gallons (WG), not milliliters or ABV. PG = WG x (proof / 100). This is how warehouses actually measure and report.
+We use TTB-native units throughout: proof gallons (PG) and wine gallons (WG), not milliliters or ABV. PG = WG × (proof / 100). This is how warehouses actually measure and report.
 
 The data model has three explicit tiers:
 
@@ -93,6 +81,12 @@ The data model has three explicit tiers:
 | 3: Market opinions | Models, comps | Reference only | Age-curve valuation (labeled as estimate, not price) |
 
 Tier 2 and 3 are clearly labeled. We never pass off a model output as a measurement.
+
+## What This Is Not
+
+- **Not a valuation oracle.** We put verified physical facts onchain. Valuation is a model output, not a measurement, and we label it accordingly.
+- **Not trustless end-to-end.** The system trusts TTB-regulated warehouses to report accurately (falsifying federal records is a criminal offense). CRE decentralizes the *pipeline*, not the *source*.
+- **Not whisky-specific.** Whisky casks are the demo asset. The pattern — privacy-preserving proof of reserve for physically-held assets via CRE — generalizes to wine, precious metals, or any custodied commodity with regulated record-keeping. We demonstrate with US TTB units because the federal framework is the most explicit; the architecture applies equally to HMRC-regulated Scottish warehouses (litres of pure alcohol, bulk litres, WOWGR).
 
 ## CRE Execution Budgets
 
@@ -152,32 +146,24 @@ forge test -vvv
 | [workflows/lifecycle-webhook/index.ts](workflows/lifecycle-webhook/index.ts) | HTTPCapability (webhook trigger), report write |
 | [workflows/lifecycle-reconcile/index.ts](workflows/lifecycle-reconcile/index.ts) | CronCapability, HTTPClient (`/lifecycle/recent`), report write |
 
-### CRE Shared Infrastructure
+### Supporting CRE Infrastructure
 
-| File | What It Does |
-|------|-------------|
-| [workflows/shared/cre-runtime.ts](workflows/shared/cre-runtime.ts) | CRE SDK facade: typed runtime, `loadCreSdk()`, `httpGetJson()`, `submitReport()`, `resolveSnapshotAsOf()`, `resolveTotalTokenSupply()` |
-| [workflows/shared/cre-sdk.ts](workflows/shared/cre-sdk.ts) | Type-only CRE SDK binding (`CreSdkTypeBinding`) |
-| [workflows/shared/report-encoding.ts](workflows/shared/report-encoding.ts) | ABI encoding for all 4 report types, matching Solidity structs exactly |
+| File | Role |
+|------|------|
+| [workflows/shared/cre-runtime.ts](workflows/shared/cre-runtime.ts) | CRE SDK facade: typed runtime, HTTP, EVM, report submission |
+| [workflows/shared/cre-sdk.ts](workflows/shared/cre-sdk.ts) | Type-only CRE SDK binding |
+| [workflows/shared/report-encoding.ts](workflows/shared/report-encoding.ts) | ABI encoding for all 4 report types, matching Solidity structs |
 | [workflows/shared/contract-mapping.ts](workflows/shared/contract-mapping.ts) | API-to-contract type transforms with exhaustive enum mappings |
-
-### CRE Workflow Manifests (CRE CLI configuration)
-
-| File | Trigger |
-|------|---------|
-| [workflows/proof-of-reserve/workflow.yaml](workflows/proof-of-reserve/workflow.yaml) | Cron (hourly) |
-| [workflows/physical-attributes/workflow.yaml](workflows/physical-attributes/workflow.yaml) | Cron (daily) |
-| [workflows/lifecycle-webhook/workflow.yaml](workflows/lifecycle-webhook/workflow.yaml) | HTTP trigger |
-| [workflows/lifecycle-reconcile/workflow.yaml](workflows/lifecycle-reconcile/workflow.yaml) | Cron (daily) |
+| [workflows/\*/workflow.yaml](workflows/) | CRE CLI workflow manifests (cron + HTTP triggers) |
 | [project.yaml](project.yaml) | Project-level CRE settings (RPC endpoints, chain selectors) |
 
 ### Smart Contract (CRE Report Receiver)
 
 | File | CRE Integration |
 |------|----------------|
-| [contracts/src/WhiskyCaskVault.sol](contracts/src/WhiskyCaskVault.sol) | `onReport(bytes)` receiver, `keystoneForwarder` address, `onlyReportSource` modifier, report type dispatch |
-| [contracts/src/interfaces/IWhiskyCaskVault.sol](contracts/src/interfaces/IWhiskyCaskVault.sol) | `ReportType` enum, report payload structs, `onReport()` signatures |
-| [contracts/test/WhiskyCaskVault.t.sol](contracts/test/WhiskyCaskVault.t.sol) | Tests for KeystoneForwarder path, `onReport()` ACL, report routing |
+| [contracts/src/WhiskyCaskVault.sol](contracts/src/WhiskyCaskVault.sol) | `onReport(bytes)` receiver, `keystoneForwarder` ACL, report type dispatch |
+| [contracts/src/interfaces/IWhiskyCaskVault.sol](contracts/src/interfaces/IWhiskyCaskVault.sol) | `ReportType` enum, report payload structs |
+| [contracts/test/WhiskyCaskVault.t.sol](contracts/test/WhiskyCaskVault.t.sol) | 17 tests: ACL, report routing, lifecycle state machine, pause control |
 
 ## Project Structure
 
@@ -185,7 +171,7 @@ forge test -vvv
 contracts/
   src/WhiskyCaskVault.sol          Onchain report consumer (onReport routing by ReportType)
   src/interfaces/IWhiskyCaskVault.sol  Enums, structs, interface
-  test/WhiskyCaskVault.t.sol       Foundry tests (12 tests)
+  test/WhiskyCaskVault.t.sol       Foundry tests (17 tests)
   script/Deploy.s.sol              Sepolia deployment script
 
 api/
@@ -221,12 +207,6 @@ project.yaml                       CRE project settings (RPC endpoints)
 - **Chain**: Ethereum Sepolia
 - **Encoding**: `viem` for ABI encoding/decoding, `zod` for config validation
 
-## What This Is Not
-
-- **Not a valuation oracle.** We put verified physical facts onchain. Valuation is a model output, not a measurement, and we label it accordingly.
-- **Not trustless end-to-end.** The system trusts TTB-regulated warehouses to report accurately (falsifying federal records is a criminal offense). CRE decentralizes the *pipeline*, not the *source*.
-- **Not whisky-specific.** Whisky casks are the demo asset. The pattern (privacy-preserving proof of reserve for physically-held assets via CRE) generalizes to wine, art, precious metals, or any custodied commodity with regulated record-keeping.
-
 ## Known Limitations (Current Demo)
 
 - **Lifecycle reconcile submits one event per run.** The daily fallback currently submits the latest event only, not a full backlog replay.
@@ -234,4 +214,4 @@ project.yaml                       CRE project settings (RPC endpoints)
 
 ## Hackathon Context
 
-Built for the [Chainlink Convergence Hackathon](https://chain.link/convergence) (Feb 6 -- Mar 1, 2026). Primary track: Privacy. Confidential HTTP integration for the proof-of-reserve inventory fetch is pending Chainlink privacy details expected February 12, 2026.
+Built for the [Chainlink Convergence Hackathon](https://chain.link/hackathon) (Feb 6 – Mar 1, 2026).

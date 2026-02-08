@@ -4,6 +4,17 @@ pragma solidity ^0.8.24;
 import {WhiskyCaskVault} from "../src/WhiskyCaskVault.sol";
 import {IWhiskyCaskVault} from "../src/interfaces/IWhiskyCaskVault.sol";
 
+interface Vm {
+    struct Log {
+        bytes32[] topics;
+        bytes data;
+        address emitter;
+    }
+
+    function recordLogs() external;
+    function getRecordedLogs() external returns (Log[] memory);
+}
+
 contract VaultCaller {
     function callSetReporter(address vault, address reporter, bool allowed) external {
         WhiskyCaskVault(vault).setReporter(reporter, allowed);
@@ -15,6 +26,10 @@ contract VaultCaller {
 
     function callSetKeystoneForwarder(address vault, address forwarder) external {
         WhiskyCaskVault(vault).setKeystoneForwarder(forwarder);
+    }
+
+    function callSetPaused(address vault, bool isPaused) external {
+        WhiskyCaskVault(vault).setPaused(isPaused);
     }
 
     function callSetTotalMinted(address vault, uint256 totalMintedUnits) external {
@@ -42,10 +57,33 @@ contract VaultCaller {
 }
 
 contract WhiskyCaskVaultTest {
+    Vm private constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+    bytes32 private constant REPORTER_UPDATED_SIG = keccak256("ReporterUpdated(address,bool)");
+    bytes32 private constant OWNERSHIP_TRANSFERRED_SIG =
+        keccak256("OwnershipTransferred(address,address)");
+    bytes32 private constant PAUSED_SIG = keccak256("Paused(address)");
+    bytes32 private constant UNPAUSED_SIG = keccak256("Unpaused(address)");
+    bytes32 private constant LIFECYCLE_TRANSITION_SIG =
+        keccak256("LifecycleTransition(uint256,uint8,uint8,uint256,uint256,uint256,uint16)");
+
     WhiskyCaskVault private vault;
     VaultCaller private reporter;
     VaultCaller private outsider;
     VaultCaller private forwarder;
+
+    function assertEventEmitted(bytes32 signature, address expectedEmitter) internal {
+        Vm.Log[] memory logs = VM.getRecordedLogs();
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (
+                logs[i].emitter == expectedEmitter
+                    && logs[i].topics.length > 0
+                    && logs[i].topics[0] == signature
+            ) {
+                return;
+            }
+        }
+        revert("expected event not emitted");
+    }
 
     function setUp() public {
         vault = new WhiskyCaskVault();
@@ -55,7 +93,9 @@ contract WhiskyCaskVaultTest {
     }
 
     function testOwnerCanSetReporterAndReporterCanMutateState() public {
+        VM.recordLogs();
         vault.setReporter(address(reporter), true);
+        assertEventEmitted(REPORTER_UPDATED_SIG, address(vault));
         reporter.callSetTotalMinted(address(vault), 47_000);
         require(vault.totalMinted() == 47_000, "totalMinted not updated");
     }
@@ -246,6 +286,88 @@ contract WhiskyCaskVaultTest {
         require(afterTransition.lastGaugeDate == 1_725_811_200, "gauge date should be unchanged");
     }
 
+    function testLifecycleTransitionEmitsEvent() public {
+        uint256 caskId = 222;
+        IWhiskyCaskVault.CaskAttributesInput[] memory updates = new IWhiskyCaskVault.CaskAttributesInput[](
+            1
+        );
+        updates[0] = IWhiskyCaskVault.CaskAttributesInput({
+            caskId: caskId,
+            attributes: IWhiskyCaskVault.CaskAttributes({
+                caskType: IWhiskyCaskVault.CaskType.BOURBON_BARREL,
+                spiritType: IWhiskyCaskVault.SpiritType.BOURBON,
+                fillDate: 1_672_531_200,
+                entryProofGallons: 512e2,
+                entryWineGallons: 270e2,
+                entryProof: 1100,
+                lastGaugeProofGallons: 490e2,
+                lastGaugeWineGallons: 258e2,
+                lastGaugeProof: 1090,
+                lastGaugeDate: 1_704_067_200,
+                lastGaugeMethod: IWhiskyCaskVault.GaugeMethod.WET_DIP,
+                estimatedProofGallons: 474e2,
+                state: IWhiskyCaskVault.CaskState.MATURATION,
+                warehouseCode: bytes16("WH-OR-006")
+            })
+        });
+
+        vault.upsertCaskAttributesBatch(updates);
+        VM.recordLogs();
+        vault.recordLifecycleTransition(
+            caskId,
+            IWhiskyCaskVault.CaskState.REGAUGED,
+            1_736_002_000,
+            488e2,
+            257e2,
+            1089
+        );
+        assertEventEmitted(LIFECYCLE_TRANSITION_SIG, address(vault));
+    }
+
+    function testPauseBlocksMutationAndEmitsEvents() public {
+        vault.setReporter(address(reporter), true);
+        bytes memory publicPayload = abi.encode(
+            IWhiskyCaskVault.ReserveAttestationPublic({
+                physicalCaskCount: 47,
+                totalTokenSupply: 47_000,
+                tokensPerCask: 1_000,
+                reserveRatio: 1e18,
+                timestamp: 1_735_360_301,
+                attestationHash: keccak256("paused-report")
+            })
+        );
+        bytes memory report = abi.encode(uint8(IWhiskyCaskVault.ReportType.RESERVE_PUBLIC), publicPayload);
+
+        VM.recordLogs();
+        vault.setPaused(true);
+        assertEventEmitted(PAUSED_SIG, address(vault));
+
+        bool success;
+        (success,) = address(reporter).call(
+            abi.encodeWithSelector(
+                VaultCaller.callSetTotalMinted.selector,
+                address(vault),
+                77_000
+            )
+        );
+        require(!success, "paused should block reporter mutation");
+
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                bytes4(keccak256("onReport(bytes)")),
+                report
+            )
+        );
+        require(!success, "paused should block report ingestion");
+
+        VM.recordLogs();
+        vault.setPaused(false);
+        assertEventEmitted(UNPAUSED_SIG, address(vault));
+
+        reporter.callSetTotalMinted(address(vault), 77_000);
+        require(vault.totalMinted() == 77_000, "unpaused mutation should succeed");
+    }
+
     function testOnReportRejectsUnauthorizedSource() public {
         bytes memory publicPayload = abi.encode(
             IWhiskyCaskVault.ReserveAttestationPublic({
@@ -384,6 +506,71 @@ contract WhiskyCaskVaultTest {
         require(!success, "invalid lifecycle transition should revert");
     }
 
+    function testGetCaskAttributesUnknownRevertsAndExistsFlagIsFalse() public view {
+        require(!vault.caskExists(999), "unknown cask should not exist");
+    }
+
+    function testGetCaskAttributesUnknownCallReverts() public {
+        bool success;
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                WhiskyCaskVault.getCaskAttributes.selector,
+                999
+            )
+        );
+        require(!success, "unknown cask attributes read should revert");
+    }
+
+    function testBottledSelfTransitionRejected() public {
+        uint256 caskId = 404;
+        IWhiskyCaskVault.CaskAttributesInput[] memory updates = new IWhiskyCaskVault.CaskAttributesInput[](
+            1
+        );
+        updates[0] = IWhiskyCaskVault.CaskAttributesInput({
+            caskId: caskId,
+            attributes: IWhiskyCaskVault.CaskAttributes({
+                caskType: IWhiskyCaskVault.CaskType.PORT_PIPE,
+                spiritType: IWhiskyCaskVault.SpiritType.WHEAT,
+                fillDate: 1_640_000_000,
+                entryProofGallons: 520e2,
+                entryWineGallons: 270e2,
+                entryProof: 1140,
+                lastGaugeProofGallons: 480e2,
+                lastGaugeWineGallons: 250e2,
+                lastGaugeProof: 1120,
+                lastGaugeDate: 1_735_000_000,
+                lastGaugeMethod: IWhiskyCaskVault.GaugeMethod.WET_DIP,
+                estimatedProofGallons: 470e2,
+                state: IWhiskyCaskVault.CaskState.BOTTLING_READY,
+                warehouseCode: bytes16("WH-OR-005")
+            })
+        });
+
+        vault.upsertCaskAttributesBatch(updates);
+        vault.recordLifecycleTransition(
+            caskId,
+            IWhiskyCaskVault.CaskState.BOTTLED,
+            1_736_100_000,
+            0,
+            0,
+            0
+        );
+
+        bool success;
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                WhiskyCaskVault.recordLifecycleTransition.selector,
+                caskId,
+                IWhiskyCaskVault.CaskState.BOTTLED,
+                1_736_100_100,
+                0,
+                0,
+                0
+            )
+        );
+        require(!success, "bottled self transition should revert");
+    }
+
     function testTransferOwnershipUpdatesOwnerPermissions() public {
         bool success;
         (success,) = address(vault).call(
@@ -394,7 +581,9 @@ contract WhiskyCaskVaultTest {
         );
         require(!success, "zero owner transfer should revert");
 
+        VM.recordLogs();
         vault.transferOwnership(address(reporter));
+        assertEventEmitted(OWNERSHIP_TRANSFERRED_SIG, address(vault));
         require(vault.owner() == address(reporter), "owner should be reporter");
 
         (success,) = address(vault).call(

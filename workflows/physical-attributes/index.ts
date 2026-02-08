@@ -44,6 +44,20 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
         withAsOf("/portfolio/summary", snapshotAsOf),
       );
       const targetIds = summary.recentlyChangedCaskIds.slice(0, runtime.config.maxBatchSize);
+
+      if (targetIds.length === 0) {
+        runtime.log("[physical-attributes] no recently changed casks in summary");
+        return {
+          workflow: "physical-attributes",
+          asOf: snapshotAsOf,
+          scannedSummaryCasks: summary.totalCasks,
+          changedHintCount: 0,
+          selectedBatchCount: 0,
+          submitted: false,
+          reason: "no-changes",
+        };
+      }
+
       const batchPath = withAsOf(buildBatchPath(targetIds, runtime.config.maxBatchSize), snapshotAsOf);
 
       const batch = httpGetJson<CaskBatchResponse, WorkflowConfig>(sdk, runtime, batchPath);
@@ -58,7 +72,7 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
           changedHintCount: summary.recentlyChangedCaskIds.length,
           selectedBatchCount: 0,
           submitted: false,
-          reason: "no-updates",
+          reason: "empty-batch",
         };
       }
 

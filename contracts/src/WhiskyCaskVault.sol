@@ -4,19 +4,37 @@ pragma solidity ^0.8.24;
 import {IWhiskyCaskVault} from "./interfaces/IWhiskyCaskVault.sol";
 
 contract WhiskyCaskVault is IWhiskyCaskVault {
+    error NotOwner();
+    error NotReporter();
+    error NotReportSource();
+    error ContractPaused();
+    error ZeroOwner();
+    error UnsupportedReportType(uint8 reportTypeRaw);
+    error StalePublicAttestation(uint256 lastTimestamp, uint256 incomingTimestamp);
+    error StalePrivateAttestation(uint256 lastTimestamp, uint256 incomingTimestamp);
+    error UnknownCask(uint256 caskId);
+    error InvalidLifecycleTransition(CaskState fromState, CaskState toState);
+    error StaleLifecycleEvent(uint256 lastTimestamp, uint256 incomingTimestamp);
+    error CaskNotFound(uint256 caskId);
+
     address public owner;
     address public keystoneForwarder;
     mapping(address => bool) public reporters;
+    bool public paused;
 
     uint256 public override totalMinted;
 
     mapping(uint256 => CaskAttributes) private caskAttributesById;
+    mapping(uint256 => bool) private caskExistsById;
     mapping(uint256 => uint256) private lastLifecycleTimestampByCaskId;
     ReserveAttestationPublic private publicReserveAttestation;
     ReserveAttestationPrivate private privateReserveAttestation;
 
     event ReporterUpdated(address indexed reporter, bool allowed);
     event KeystoneForwarderUpdated(address indexed forwarder);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event Paused(address indexed account);
+    event Unpaused(address indexed account);
     event TotalMintedUpdated(uint256 totalMintedUnits);
     event CaskAttributesUpdated(uint256 indexed caskId, uint256 timestamp);
     event ReserveAttestationPublicUpdated(
@@ -44,22 +62,36 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
     );
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "not owner");
+        if (msg.sender != owner) {
+            revert NotOwner();
+        }
         _;
     }
 
     modifier onlyReporter() {
-        require(msg.sender == owner || reporters[msg.sender], "not reporter");
+        if (!(msg.sender == owner || reporters[msg.sender])) {
+            revert NotReporter();
+        }
         _;
     }
 
     modifier onlyReportSource() {
-        require(
-            msg.sender == owner
-                || reporters[msg.sender]
-                || (keystoneForwarder != address(0) && msg.sender == keystoneForwarder),
-            "not report source"
-        );
+        if (
+            !(
+                msg.sender == owner
+                    || reporters[msg.sender]
+                    || (keystoneForwarder != address(0) && msg.sender == keystoneForwarder)
+            )
+        ) {
+            revert NotReportSource();
+        }
+        _;
+    }
+
+    modifier whenNotPaused() {
+        if (paused) {
+            revert ContractPaused();
+        }
         _;
     }
 
@@ -77,12 +109,29 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         emit KeystoneForwarderUpdated(forwarder);
     }
 
-    function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "zero owner");
-        owner = newOwner;
+    function setPaused(bool isPaused) external onlyOwner {
+        if (paused == isPaused) {
+            return;
+        }
+
+        paused = isPaused;
+        if (isPaused) {
+            emit Paused(msg.sender);
+        } else {
+            emit Unpaused(msg.sender);
+        }
     }
 
-    function onReport(bytes calldata report) external override onlyReportSource {
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) {
+            revert ZeroOwner();
+        }
+        address previousOwner = owner;
+        owner = newOwner;
+        emit OwnershipTransferred(previousOwner, newOwner);
+    }
+
+    function onReport(bytes calldata report) external override onlyReportSource whenNotPaused {
         _handleReport(report);
     }
 
@@ -90,12 +139,16 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         external
         override
         onlyReportSource
+        whenNotPaused
     {
         _handleReport(report);
     }
 
     function _handleReport(bytes calldata report) internal {
         (uint8 reportTypeRaw, bytes memory payload) = abi.decode(report, (uint8, bytes));
+        if (reportTypeRaw > uint8(ReportType.LIFECYCLE)) {
+            revert UnsupportedReportType(reportTypeRaw);
+        }
         ReportType reportType = ReportType(reportTypeRaw);
 
         if (reportType == ReportType.RESERVE_PUBLIC) {
@@ -129,15 +182,19 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
             return;
         }
 
-        revert("unsupported report type");
+        revert UnsupportedReportType(reportTypeRaw);
     }
 
-    function setTotalMinted(uint256 totalMintedUnits) external onlyReporter {
+    function setTotalMinted(uint256 totalMintedUnits) external onlyReporter whenNotPaused {
         totalMinted = totalMintedUnits;
         emit TotalMintedUpdated(totalMintedUnits);
     }
 
-    function upsertCaskAttributesBatch(CaskAttributesInput[] calldata updates) external onlyReporter {
+    function upsertCaskAttributesBatch(CaskAttributesInput[] calldata updates)
+        external
+        onlyReporter
+        whenNotPaused
+    {
         _upsertCaskAttributesBatch(updates);
     }
 
@@ -146,6 +203,7 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         for (uint256 i = 0; i < length; i++) {
             uint256 caskId = updates[i].caskId;
             caskAttributesById[caskId] = updates[i].attributes;
+            caskExistsById[caskId] = true;
             if (updates[i].attributes.lastGaugeDate > lastLifecycleTimestampByCaskId[caskId]) {
                 lastLifecycleTimestampByCaskId[caskId] = updates[i].attributes.lastGaugeDate;
             }
@@ -156,12 +214,15 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
     function setReserveAttestationPublic(ReserveAttestationPublic calldata attestation)
         external
         onlyReporter
+        whenNotPaused
     {
         _setReserveAttestationPublic(attestation);
     }
 
     function _setReserveAttestationPublic(ReserveAttestationPublic memory attestation) internal {
-        require(attestation.timestamp > publicReserveAttestation.timestamp, "stale public attestation");
+        if (!(attestation.timestamp > publicReserveAttestation.timestamp)) {
+            revert StalePublicAttestation(publicReserveAttestation.timestamp, attestation.timestamp);
+        }
         publicReserveAttestation = attestation;
         emit ReserveAttestationPublicUpdated(
             attestation.physicalCaskCount,
@@ -176,12 +237,15 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
     function setReserveAttestationPrivate(ReserveAttestationPrivate calldata attestation)
         external
         onlyReporter
+        whenNotPaused
     {
         _setReserveAttestationPrivate(attestation);
     }
 
     function _setReserveAttestationPrivate(ReserveAttestationPrivate memory attestation) internal {
-        require(attestation.timestamp > privateReserveAttestation.timestamp, "stale private attestation");
+        if (!(attestation.timestamp > privateReserveAttestation.timestamp)) {
+            revert StalePrivateAttestation(privateReserveAttestation.timestamp, attestation.timestamp);
+        }
         privateReserveAttestation = attestation;
         emit ReserveAttestationPrivateUpdated(
             attestation.isFullyReserved,
@@ -197,7 +261,7 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         uint256 gaugeProofGallons,
         uint256 gaugeWineGallons,
         uint16 gaugeProof
-    ) external onlyReporter {
+    ) external onlyReporter whenNotPaused {
         _recordLifecycleTransition(
             caskId,
             toState,
@@ -216,14 +280,17 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         uint256 gaugeWineGallons,
         uint16 gaugeProof
     ) internal {
+        if (!caskExistsById[caskId]) {
+            revert UnknownCask(caskId);
+        }
         CaskAttributes storage current = caskAttributesById[caskId];
-        require(current.fillDate != 0, "unknown cask");
         CaskState fromState = current.state;
-        require(_isValidLifecycleTransition(fromState, toState), "invalid lifecycle transition");
-        require(
-            timestamp > lastLifecycleTimestampByCaskId[caskId],
-            "stale lifecycle event"
-        );
+        if (!_isValidLifecycleTransition(fromState, toState)) {
+            revert InvalidLifecycleTransition(fromState, toState);
+        }
+        if (!(timestamp > lastLifecycleTimestampByCaskId[caskId])) {
+            revert StaleLifecycleEvent(lastLifecycleTimestampByCaskId[caskId], timestamp);
+        }
 
         current.state = toState;
         lastLifecycleTimestampByCaskId[caskId] = timestamp;
@@ -251,6 +318,10 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         pure
         returns (bool)
     {
+        if (fromState == CaskState.BOTTLED) {
+            return false;
+        }
+
         if (fromState == toState) {
             return true;
         }
@@ -281,10 +352,6 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
             return toState == CaskState.BOTTLED;
         }
 
-        if (fromState == CaskState.BOTTLED) {
-            return false;
-        }
-
         return false;
     }
 
@@ -294,7 +361,14 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         override
         returns (CaskAttributes memory)
     {
+        if (!caskExistsById[caskId]) {
+            revert CaskNotFound(caskId);
+        }
         return caskAttributesById[caskId];
+    }
+
+    function caskExists(uint256 caskId) external view override returns (bool) {
+        return caskExistsById[caskId];
     }
 
     function latestPublicReserveAttestation()

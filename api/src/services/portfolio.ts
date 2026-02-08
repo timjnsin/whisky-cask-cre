@@ -47,6 +47,47 @@ function timestampMs(iso: string): number {
   return new Date(iso).getTime();
 }
 
+function maxTimestamp(events: LifecycleEvent[]): number {
+  return events.reduce((max, event) => Math.max(max, timestampMs(event.timestamp)), 0);
+}
+
+function isValidLifecycleTransition(fromState: CaskRecord["state"], toState: CaskRecord["state"]): boolean {
+  if (fromState === "bottled") return false;
+  if (fromState === toState) return false;
+
+  if (fromState === "filled") {
+    return toState === "maturation";
+  }
+
+  if (fromState === "maturation") {
+    return toState === "regauged" || toState === "transfer" || toState === "bottling_ready";
+  }
+
+  if (fromState === "regauged") {
+    return toState === "maturation" || toState === "transfer" || toState === "bottling_ready";
+  }
+
+  if (fromState === "transfer") {
+    return toState === "maturation" || toState === "regauged" || toState === "bottling_ready";
+  }
+
+  if (fromState === "bottling_ready") {
+    return toState === "bottled";
+  }
+
+  return false;
+}
+
+export class LifecycleValidationError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: 400 | 401 | 403 | 409 = 400,
+  ) {
+    super(message);
+    this.name = "LifecycleValidationError";
+  }
+}
+
 export class PortfolioStore {
   private data: PortfolioData | null = null;
   private caskById = new Map<number, CaskRecord>();
@@ -210,6 +251,25 @@ export class PortfolioStore {
     if (!cask) return undefined;
 
     const timestamp = payload.timestamp ?? new Date().toISOString();
+    const timestampValue = timestampMs(timestamp);
+    if (!Number.isFinite(timestampValue)) {
+      throw new LifecycleValidationError("invalid lifecycle timestamp", 400);
+    }
+
+    const maxFutureSkewMs = 5 * 60 * 1000;
+    if (timestampValue > Date.now() + maxFutureSkewMs) {
+      throw new LifecycleValidationError("lifecycle timestamp is too far in the future", 400);
+    }
+
+    const latestKnownTimestamp = Math.max(timestampMs(cask.fillDate), maxTimestamp(cask.lifecycle));
+    if (timestampValue <= latestKnownTimestamp) {
+      throw new LifecycleValidationError("stale lifecycle event timestamp", 409);
+    }
+
+    if (!isValidLifecycleTransition(cask.state, payload.toState)) {
+      throw new LifecycleValidationError("invalid lifecycle transition", 400);
+    }
+
     const event: LifecycleEvent = {
       caskId: cask.caskId,
       fromState: cask.state,

@@ -28,11 +28,11 @@ async function main() {
 
   const payload = {
     caskId,
-    toState: "regauged" as const,
+    toState: "transfer" as const,
     gaugeProofGallons,
     gaugeWineGallons,
     gaugeProof,
-    reason: "regauge" as const,
+    reason: "transfer" as const,
     timestamp: new Date().toISOString(),
   };
 

@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { MockWarehouseAdapter } from "./adapters/warehouse/mockWarehouseAdapter.js";
-import { PortfolioStore } from "./services/portfolio.js";
+import { LifecycleValidationError, PortfolioStore } from "./services/portfolio.js";
 
 const lifecyclePayloadSchema = z.object({
   caskId: z.number().int().positive(),
@@ -133,15 +133,30 @@ async function bootstrap(): Promise<void> {
   });
 
   app.post("/events/lifecycle", async (c) => {
+    const lifecycleApiKey = process.env.LIFECYCLE_API_KEY;
+    if (lifecycleApiKey) {
+      const suppliedKey = c.req.header("x-lifecycle-key");
+      if (!suppliedKey || suppliedKey !== lifecycleApiKey) {
+        return c.json({ error: "unauthorized lifecycle event source" }, 401);
+      }
+    }
+
     const body = await c.req.json().catch(() => null);
     const parsed = lifecyclePayloadSchema.safeParse(body);
     if (!parsed.success) {
       return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
     }
 
-    const event = await adapter.recordLifecycle(parsed.data);
-    if (!event) return c.json({ error: "cask not found" }, 404);
-    return c.json({ ok: true, event });
+    try {
+      const event = await adapter.recordLifecycle(parsed.data);
+      if (!event) return c.json({ error: "cask not found" }, 404);
+      return c.json({ ok: true, event });
+    } catch (error) {
+      if (error instanceof LifecycleValidationError) {
+        return c.json({ error: error.message }, error.statusCode);
+      }
+      throw error;
+    }
   });
 
   const port = Number(process.env.PORT ?? 3000);
