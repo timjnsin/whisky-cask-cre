@@ -50,7 +50,7 @@ export interface ContractLifecycleReport {
 }
 
 function toUint16(value: bigint, label: string): number {
-  if (value < 0n || value > 65535n) {
+  if (value < 0n || value > 65_535n) {
     throw new Error(`${label} out of uint16 range: ${value.toString()}`);
   }
   return Number(value);
@@ -129,7 +129,7 @@ export function lifecycleStateEnum(state: LifecycleState): number {
 }
 
 export function unixSeconds(isoTimestamp: string): bigint {
-  return BigInt(Math.floor(new Date(isoTimestamp).getTime() / 1000));
+  return BigInt(Math.floor(new Date(isoTimestamp).getTime() / 1_000));
 }
 
 export function warehouseCodeHex(warehouseId: string): Hex {

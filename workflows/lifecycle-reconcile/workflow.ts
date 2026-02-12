@@ -13,14 +13,15 @@ async function main() {
 
   const latestTen = recent.events.slice(-10);
 
-  console.log("[lifecycle-reconcile] scanned events", recent.count);
-  console.log("[lifecycle-reconcile] httpCalls", 1);
-  console.log("[lifecycle-reconcile] latest 10 events");
+  console.log("lifecycle-reconcile: scanned events", recent.count);
+  console.log("lifecycle-reconcile: httpCalls", 1);
+  console.log("lifecycle-reconcile: latest 10 events");
   console.log(JSON.stringify(latestTen, null, 2));
-  console.log("[lifecycle-reconcile] cre-sdk", creSdk);
+  console.log("lifecycle-reconcile: cre-sdk", creSdk);
 }
 
 main().catch((error) => {
   console.error("lifecycle-reconcile workflow failed", error);
   process.exit(1);
+  return;
 });

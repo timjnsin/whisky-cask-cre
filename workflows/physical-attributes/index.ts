@@ -31,7 +31,7 @@ function buildBatchPath(targetIds: number[], maxBatchSize: number): string {
   return `/casks/batch?${query.join("&")}`;
 }
 
-async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
+function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
   const cron = new sdk.cre.capabilities.CronCapability();
   const trigger = cron.trigger({ schedule: config.schedule });
 

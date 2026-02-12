@@ -99,7 +99,7 @@ export interface CreSdkModule {
       fn: (runtime: CreRuntime<TConfig>, triggerOutput: TTriggerOutput) => TResult,
     ): unknown;
   };
-  consensusIdenticalAggregation<T>(): unknown;
+  consensusIdenticalAggregation(): unknown;
   ok(response: unknown): boolean;
   text(response: unknown): string;
   encodeCallMsg(payload: { from: Address; to: Address; data: Hex }): unknown;
@@ -167,7 +167,7 @@ function assertCreSdkModule(module: unknown): asserts module is CreSdkModule {
   }
 }
 
-export async function loadCreSdk(): Promise<CreSdkModule> {
+export function loadCreSdk(): Promise<CreSdkModule> {
   if (!cachedSdk) {
     cachedSdk = import("@chainlink/cre-sdk").then((module) => {
       assertCreSdkModule(module);
@@ -185,6 +185,7 @@ export async function sendErrorToCre(error: unknown): Promise<void> {
     console.error("CRE error dispatch failed", sdkError);
     console.error(error);
     process.exitCode = 1;
+    return;
   }
 }
 
@@ -237,7 +238,7 @@ function parseProtoTimestamp(value: unknown): string | undefined {
 
   const secondsBigInt = BigInt(seconds);
   const nanosNumber = typeof nanos === "number" ? nanos : 0;
-  const millis = Number(secondsBigInt * 1000n) + Math.floor(nanosNumber / 1_000_000);
+  const millis = Number(secondsBigInt * 1_000n) + Math.floor(nanosNumber / 1_000_000);
   const parsed = new Date(millis);
   if (Number.isNaN(parsed.getTime())) return undefined;
   return parsed.toISOString();
@@ -336,7 +337,7 @@ export function httpGetJson<T, TConfig extends { apiBaseUrl: string }>(
 
         return responseBody;
       },
-      sdk.consensusIdenticalAggregation<string>(),
+      sdk.consensusIdenticalAggregation(),
     )(url)
     .result();
 

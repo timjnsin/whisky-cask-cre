@@ -49,7 +49,7 @@ async function main() {
     };
   });
 
-  console.log("[physical-attributes] summary", {
+  console.log("physical-attributes: summary", {
     totalCasks: summary.totalCasks,
     changedCasksHint: summary.recentlyChangedCaskIds.length,
     batchCount: batch.count,
@@ -57,14 +57,14 @@ async function main() {
     chainSelector: config.chainSelector,
   });
 
-  console.log("[physical-attributes] batch payload preview (first 3)");
+  console.log("physical-attributes: batch payload preview (first 3)");
   console.log(JSON.stringify(payload.slice(0, 3), null, 2));
-  console.log("[physical-attributes] batch size", payload.length);
-  console.log("[physical-attributes] cre-sdk", creSdk);
+  console.log("physical-attributes: batch size", payload.length);
+  console.log("physical-attributes: cre-sdk", creSdk);
 }
 
 main().catch((error) => {
   console.error("physical-attributes workflow failed", error);
   process.exit(1);
+  return;
 });
-

@@ -67,7 +67,7 @@ function parseIncomingPayload(payload: HttpTriggerPayload): z.infer<typeof lifec
   return lifecycleWebhookPayloadSchema.parse(parsedJson);
 }
 
-async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
+function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
   const httpTrigger = new sdk.cre.capabilities.HTTPCapability();
   const trigger = httpTrigger.trigger({ authorizedKeys: config.webhookAuthorizedKeys });
 

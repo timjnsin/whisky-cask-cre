@@ -20,19 +20,20 @@ async function main() {
     timestamp,
   });
 
-  console.log("[proof-of-reserve] inventory", {
+  console.log("proof-of-reserve: inventory", {
     physicalCaskCount: inventory.physical_cask_count,
     totalTokenSupply,
     tokensPerCask: config.tokensPerCask,
     mode: config.attestationMode,
   });
 
-  console.log("[proof-of-reserve] report payload");
+  console.log("proof-of-reserve: report payload");
   console.log(JSON.stringify(report, null, 2));
-  console.log("[proof-of-reserve] cre-sdk", creSdk);
+  console.log("proof-of-reserve: cre-sdk", creSdk);
 }
 
 main().catch((error) => {
   console.error("proof-of-reserve workflow failed", error);
   process.exit(1);
+  return;
 });

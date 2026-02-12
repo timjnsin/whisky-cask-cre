@@ -161,10 +161,11 @@ async function bootstrap(): Promise<void> {
 
   const port = Number(process.env.PORT ?? 3000);
   serve({ fetch: app.fetch, port });
-  console.log(`[warehouse-api] listening on http://localhost:${port}`);
+  console.log(`warehouse-api: listening on http://localhost:${port}`);
 }
 
 bootstrap().catch((error) => {
   console.error("Failed to boot API", error);
   process.exit(1);
+  return;
 });

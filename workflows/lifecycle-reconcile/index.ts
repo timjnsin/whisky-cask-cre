@@ -24,7 +24,7 @@ const configSchema = baseCreConfigSchema.extend({
 
 type WorkflowConfig = z.infer<typeof configSchema>;
 
-async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
+function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
   const cron = new sdk.cre.capabilities.CronCapability();
   const trigger = cron.trigger({ schedule: config.schedule });
 
@@ -55,7 +55,7 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
           a.toState.localeCompare(b.toState),
       );
       const snapshotMs = new Date(snapshotAsOf).getTime();
-      const windowStartMs = snapshotMs - runtime.config.reconcileWindowHours * 60 * 60 * 1000;
+      const windowStartMs = snapshotMs - runtime.config.reconcileWindowHours * 60 * 60 * 1_000;
       const windowedEvents = orderedEvents.filter(
         (event) => new Date(event.timestamp).getTime() >= windowStartMs,
       );

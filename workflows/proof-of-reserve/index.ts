@@ -33,7 +33,7 @@ function reserveRatioScaled(
   return (BigInt(physicalCaskCount) * BigInt(tokensPerCask) * RESERVE_RATIO_SCALE) / totalTokenSupply;
 }
 
-async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
+function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
   const cron = new sdk.cre.capabilities.CronCapability();
   const trigger = cron.trigger({ schedule: config.schedule });
 
@@ -44,7 +44,7 @@ async function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
 
       const inventory = httpGetJson<InventoryResponse, WorkflowConfig>(sdk, runtime, inventoryPath);
       const totalTokenSupply = resolveTotalTokenSupply(sdk, runtime);
-      const timestamp = BigInt(Math.floor(new Date(snapshotAsOf).getTime() / 1000));
+      const timestamp = BigInt(Math.floor(new Date(snapshotAsOf).getTime() / 1_000));
 
       if (runtime.config.attestationMode === "confidential") {
         runtime.log(`[proof-of-reserve] mode=confidential attestation=${inventory.attestation_hash}`);

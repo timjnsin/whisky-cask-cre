@@ -45,20 +45,21 @@ async function main() {
     caskId: response.event.caskId,
     fromState: response.event.fromState,
     toState: response.event.toState,
-    timestamp: Math.floor(new Date(response.event.timestamp).getTime() / 1000),
+    timestamp: Math.floor(new Date(response.event.timestamp).getTime() / 1_000),
     gaugeProofGallons: toScaled2(response.event.gaugeProofGallons).toString(),
     gaugeWineGallons: toScaled2(response.event.gaugeWineGallons).toString(),
     gaugeProof: toScaled1(response.event.gaugeProof).toString(),
   };
 
-  console.log("[lifecycle-webhook] event accepted", response.ok);
-  console.log("[lifecycle-webhook] contract payload");
+  console.log("lifecycle-webhook: event accepted", response.ok);
+  console.log("lifecycle-webhook: contract payload");
   console.log(JSON.stringify(contractEventPayload, null, 2));
-  console.log("[lifecycle-webhook] httpCalls", 1);
-  console.log("[lifecycle-webhook] cre-sdk", creSdk);
+  console.log("lifecycle-webhook: httpCalls", 1);
+  console.log("lifecycle-webhook: cre-sdk", creSdk);
 }
 
 main().catch((error) => {
   console.error("lifecycle-webhook workflow failed", error);
   process.exit(1);
+  return;
 });

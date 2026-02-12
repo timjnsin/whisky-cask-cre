@@ -10,3 +10,5 @@ contracts/cache/
 contracts/broadcast/
 workflows/*/tmp.js
 workflows/*/tmp.wasm
+.desloppify/
+scorecard.png

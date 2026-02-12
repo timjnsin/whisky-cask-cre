@@ -218,7 +218,7 @@ export class PortfolioStore {
         0,
         Math.floor(
           (new Date(asOf).getTime() - new Date(cask.fillDate).getTime()) /
-            (1000 * 60 * 60 * 24 * 30.4375),
+            (1_000 * 60 * 60 * 24 * 30.4375),
         ),
       );
       if (months < 24) ageBuckets["0_24"] += 1;
@@ -229,7 +229,7 @@ export class PortfolioStore {
 
     const recentlyChangedCaskIds = casks
       .filter((cask) => timestampMs(cask.updatedAt) <= asOfMs)
-      .filter((cask) => timestampMs(cask.updatedAt) >= asOfMs - 1000 * 60 * 60 * 24 * 120)
+      .filter((cask) => timestampMs(cask.updatedAt) >= asOfMs - 1_000 * 60 * 60 * 24 * 120)
       .map((cask) => cask.caskId)
       .sort((a, b) => a - b)
       .slice(0, 20);
@@ -256,7 +256,7 @@ export class PortfolioStore {
       throw new LifecycleValidationError("invalid lifecycle timestamp", 400);
     }
 
-    const maxFutureSkewMs = 5 * 60 * 1000;
+    const maxFutureSkewMs = 5 * 60 * 1_000;
     if (timestampValue > Date.now() + maxFutureSkewMs) {
       throw new LifecycleValidationError("lifecycle timestamp is too far in the future", 400);
     }
