@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 import {IWhiskyCaskVault} from "./interfaces/IWhiskyCaskVault.sol";
 
 contract WhiskyCaskVault is IWhiskyCaskVault {
+    uint256 private constant SINGLE_LIFECYCLE_REPORT_BYTES = 32 * 6;
+
     error NotOwner();
     error NotReporter();
     error NotReportSource();
@@ -170,15 +172,21 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         }
 
         if (reportType == ReportType.LIFECYCLE) {
-            LifecycleReport memory lifecycleReport = abi.decode(payload, (LifecycleReport));
-            _recordLifecycleTransition(
-                lifecycleReport.caskId,
-                lifecycleReport.toState,
-                lifecycleReport.timestamp,
-                lifecycleReport.gaugeProofGallons,
-                lifecycleReport.gaugeWineGallons,
-                lifecycleReport.gaugeProof
-            );
+            if (payload.length == SINGLE_LIFECYCLE_REPORT_BYTES) {
+                LifecycleReport memory lifecycleReport = abi.decode(payload, (LifecycleReport));
+                _recordLifecycleTransition(
+                    lifecycleReport.caskId,
+                    lifecycleReport.toState,
+                    lifecycleReport.timestamp,
+                    lifecycleReport.gaugeProofGallons,
+                    lifecycleReport.gaugeWineGallons,
+                    lifecycleReport.gaugeProof
+                );
+                return;
+            }
+
+            LifecycleReport[] memory lifecycleReports = abi.decode(payload, (LifecycleReport[]));
+            _recordLifecycleBatch(lifecycleReports);
             return;
         }
 
@@ -313,6 +321,21 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         );
     }
 
+    function _recordLifecycleBatch(LifecycleReport[] memory lifecycleReports) internal {
+        uint256 length = lifecycleReports.length;
+        for (uint256 i = 0; i < length; i++) {
+            LifecycleReport memory lifecycleReport = lifecycleReports[i];
+            _recordLifecycleTransition(
+                lifecycleReport.caskId,
+                lifecycleReport.toState,
+                lifecycleReport.timestamp,
+                lifecycleReport.gaugeProofGallons,
+                lifecycleReport.gaugeWineGallons,
+                lifecycleReport.gaugeProof
+            );
+        }
+    }
+
     function _isValidLifecycleTransition(CaskState fromState, CaskState toState)
         internal
         pure
@@ -323,7 +346,7 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         }
 
         if (fromState == toState) {
-            return true;
+            return false;
         }
 
         if (fromState == CaskState.FILLED) {
@@ -369,6 +392,24 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
 
     function caskExists(uint256 caskId) external view override returns (bool) {
         return caskExistsById[caskId];
+    }
+
+    function lastLifecycleTimestamp(uint256 caskId) external view override returns (uint256) {
+        return lastLifecycleTimestampByCaskId[caskId];
+    }
+
+    function lastLifecycleTimestamps(uint256[] calldata caskIds)
+        external
+        view
+        override
+        returns (uint256[] memory)
+    {
+        uint256 length = caskIds.length;
+        uint256[] memory timestamps = new uint256[](length);
+        for (uint256 i = 0; i < length; i++) {
+            timestamps[i] = lastLifecycleTimestampByCaskId[caskIds[i]];
+        }
+        return timestamps;
     }
 
     function latestPublicReserveAttestation()

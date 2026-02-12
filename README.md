@@ -97,7 +97,7 @@ All workflows operate within CRE limits (max 5 HTTP calls, 10 EVM reads per exec
 | Proof of reserve | Cron (hourly) | 1 | 1 | 1 |
 | Physical attributes | Cron (daily) | 2 | 0 | 1 |
 | Lifecycle webhook | HTTP trigger | 0 | 0 | 1 |
-| Lifecycle reconcile | Cron (daily) | 1 | 0 | 1 |
+| Lifecycle reconcile | Cron (daily) | 1 | 1 | 1 |
 
 Deterministic snapshot timestamps (`resolveSnapshotAsOf` + `?asOf=` query params) ensure all DON nodes evaluate the same data window for consensus.
 
@@ -144,7 +144,7 @@ forge test -vvv
 | [workflows/proof-of-reserve/index.ts](workflows/proof-of-reserve/index.ts) | CronCapability, HTTPClient (`/inventory`), EVMClient (`totalMinted()` read + report write) |
 | [workflows/physical-attributes/index.ts](workflows/physical-attributes/index.ts) | CronCapability, HTTPClient (`/portfolio/summary` + `/casks/batch`), report write |
 | [workflows/lifecycle-webhook/index.ts](workflows/lifecycle-webhook/index.ts) | HTTPCapability (webhook trigger), report write |
-| [workflows/lifecycle-reconcile/index.ts](workflows/lifecycle-reconcile/index.ts) | CronCapability, HTTPClient (`/lifecycle/recent`), report write |
+| [workflows/lifecycle-reconcile/index.ts](workflows/lifecycle-reconcile/index.ts) | CronCapability, HTTPClient (`/lifecycle/recent`), EVMClient (`lastLifecycleTimestamps(...)` read), report write |
 
 ### Supporting CRE Infrastructure
 
@@ -163,7 +163,7 @@ forge test -vvv
 |------|----------------|
 | [contracts/src/WhiskyCaskVault.sol](contracts/src/WhiskyCaskVault.sol) | `onReport(bytes)` receiver, `keystoneForwarder` ACL, report type dispatch |
 | [contracts/src/interfaces/IWhiskyCaskVault.sol](contracts/src/interfaces/IWhiskyCaskVault.sol) | `ReportType` enum, report payload structs |
-| [contracts/test/WhiskyCaskVault.t.sol](contracts/test/WhiskyCaskVault.t.sol) | 17 tests: ACL, report routing, lifecycle state machine, pause control |
+| [contracts/test/WhiskyCaskVault.t.sol](contracts/test/WhiskyCaskVault.t.sol) | 20 tests: ACL, report routing, lifecycle state machine, pause control |
 
 ## Project Structure
 
@@ -171,7 +171,7 @@ forge test -vvv
 contracts/
   src/WhiskyCaskVault.sol          Onchain report consumer (onReport routing by ReportType)
   src/interfaces/IWhiskyCaskVault.sol  Enums, structs, interface
-  test/WhiskyCaskVault.t.sol       Foundry tests (17 tests)
+  test/WhiskyCaskVault.t.sol       Foundry tests (20 tests)
   script/Deploy.s.sol              Sepolia deployment script
 
 api/
@@ -209,8 +209,8 @@ project.yaml                       CRE project settings (RPC endpoints)
 
 ## Known Limitations (Current Demo)
 
-- **Lifecycle reconcile submits one event per run.** The daily fallback currently submits the latest event only, not a full backlog replay.
-- **Lifecycle dedup is partial.** Contract-level monotonic timestamp checks block same-timestamp replay, but logically equivalent transitions with newer timestamps can still produce duplicate lifecycle logs if submitted twice.
+- **Lifecycle reconcile is bounded per run.** The daily fallback now submits a deterministic batch, but throughput is capped by `scanLimit` and `maxReportsPerRun`, so large backlogs may need multiple runs.
+- **Lifecycle dedup is still semantic-best-effort.** Contract checks now block stale timestamps and self-transitions, but upstream systems can still emit different valid transition sequences for the same business action.
 
 ## Hackathon Context
 

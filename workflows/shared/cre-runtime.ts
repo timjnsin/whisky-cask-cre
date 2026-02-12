@@ -12,6 +12,16 @@ const TOTAL_MINTED_ABI = [
   },
 ] as const;
 
+const LAST_LIFECYCLE_TIMESTAMPS_ABI = [
+  {
+    type: "function",
+    name: "lastLifecycleTimestamps",
+    stateMutability: "view",
+    inputs: [{ name: "caskIds", type: "uint256[]" }],
+    outputs: [{ name: "", type: "uint256[]" }],
+  },
+] as const;
+
 const CHAIN_SELECTOR_ALIASES: Record<string, string> = {
   "ethereum-sepolia": "ethereum-testnet-sepolia",
 };
@@ -385,6 +395,67 @@ export function resolveTotalTokenSupply(
       return BigInt(fallback);
     }
     throw error;
+  }
+}
+
+export function resolveLastLifecycleTimestamps(
+  sdk: CreSdkModule,
+  runtime: Pick<CreRuntime<BaseCreWorkflowConfig>, "config" | "log">,
+  caskIds: readonly number[],
+): Map<number, bigint> {
+  const checkpoints = new Map<number, bigint>();
+  const uniqueSortedCaskIds = [...new Set(caskIds.filter((id) => Number.isInteger(id) && id > 0))].sort(
+    (a, b) => a - b,
+  );
+
+  if (uniqueSortedCaskIds.length === 0) {
+    return checkpoints;
+  }
+
+  if (isZeroAddress(runtime.config.contractAddress)) {
+    runtime.log("contractAddress is zero; skipping lifecycle checkpoint read");
+    return checkpoints;
+  }
+
+  try {
+    const callData = encodeFunctionData({
+      abi: LAST_LIFECYCLE_TIMESTAMPS_ABI,
+      functionName: "lastLifecycleTimestamps",
+      args: [uniqueSortedCaskIds.map((id) => BigInt(id))],
+    });
+
+    const { evmClient } = getEvmClient(sdk, runtime.config.chainSelector);
+    const response = evmClient
+      .callContract(runtime, {
+        call: sdk.encodeCallMsg({
+          from: zeroAddress,
+          to: runtime.config.contractAddress as Address,
+          data: callData,
+        }),
+        blockNumber: sdk.LAST_FINALIZED_BLOCK_NUMBER,
+      })
+      .result();
+
+    const timestamps = decodeFunctionResult({
+      abi: LAST_LIFECYCLE_TIMESTAMPS_ABI,
+      functionName: "lastLifecycleTimestamps",
+      data: sdk.bytesToHex(response.data),
+    });
+
+    if (timestamps.length !== uniqueSortedCaskIds.length) {
+      throw new Error(
+        `lastLifecycleTimestamps length mismatch: got=${timestamps.length} expected=${uniqueSortedCaskIds.length}`,
+      );
+    }
+
+    for (let i = 0; i < uniqueSortedCaskIds.length; i++) {
+      checkpoints.set(uniqueSortedCaskIds[i], timestamps[i]);
+    }
+
+    return checkpoints;
+  } catch (error) {
+    runtime.log(`lifecycle checkpoint read failed; continuing without filter: ${String(error)}`);
+    return checkpoints;
   }
 }
 

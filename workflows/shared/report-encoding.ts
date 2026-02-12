@@ -113,22 +113,38 @@ export function encodeCaskBatchReport(updates: ContractCaskAttributesInput[]): H
   return wrapReport(REPORT_TYPE.CASK_BATCH, encodedPayload);
 }
 
+const LIFECYCLE_REPORT_COMPONENTS = [
+  { type: "uint256", name: "caskId" },
+  { type: "uint8", name: "toState" },
+  { type: "uint256", name: "timestamp" },
+  { type: "uint256", name: "gaugeProofGallons" },
+  { type: "uint256", name: "gaugeWineGallons" },
+  { type: "uint16", name: "gaugeProof" },
+] as const;
+
 export function encodeLifecycleReport(event: ContractLifecycleReport): Hex {
   const encodedPayload = encodeAbiParameters(
     [
       {
         type: "tuple",
-        components: [
-          { type: "uint256", name: "caskId" },
-          { type: "uint8", name: "toState" },
-          { type: "uint256", name: "timestamp" },
-          { type: "uint256", name: "gaugeProofGallons" },
-          { type: "uint256", name: "gaugeWineGallons" },
-          { type: "uint16", name: "gaugeProof" },
-        ],
+        components: LIFECYCLE_REPORT_COMPONENTS,
       },
     ],
     [event],
+  );
+
+  return wrapReport(REPORT_TYPE.LIFECYCLE, encodedPayload);
+}
+
+export function encodeLifecycleBatchReport(events: ContractLifecycleReport[]): Hex {
+  const encodedPayload = encodeAbiParameters(
+    [
+      {
+        type: "tuple[]",
+        components: LIFECYCLE_REPORT_COMPONENTS,
+      },
+    ],
+    [events],
   );
 
   return wrapReport(REPORT_TYPE.LIFECYCLE, encodedPayload);

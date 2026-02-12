@@ -237,6 +237,71 @@ contract WhiskyCaskVaultTest {
         require(regauged.lastGaugeDate == 1_736_000_000, "lifecycle date mismatch");
     }
 
+    function testOnReportRoutesLifecycleBatchPayload() public {
+        uint256 caskId = 111;
+        IWhiskyCaskVault.CaskAttributesInput[] memory updates = new IWhiskyCaskVault.CaskAttributesInput[](
+            1
+        );
+        updates[0] = IWhiskyCaskVault.CaskAttributesInput({
+            caskId: caskId,
+            attributes: IWhiskyCaskVault.CaskAttributes({
+                caskType: IWhiskyCaskVault.CaskType.BOURBON_BARREL,
+                spiritType: IWhiskyCaskVault.SpiritType.MALT,
+                fillDate: 1_672_531_200,
+                entryProofGallons: 512e2,
+                entryWineGallons: 270e2,
+                entryProof: 1100,
+                lastGaugeProofGallons: 490e2,
+                lastGaugeWineGallons: 258e2,
+                lastGaugeProof: 1090,
+                lastGaugeDate: 1_704_067_200,
+                lastGaugeMethod: IWhiskyCaskVault.GaugeMethod.WET_DIP,
+                estimatedProofGallons: 474e2,
+                state: IWhiskyCaskVault.CaskState.MATURATION,
+                warehouseCode: bytes16("WH-OR-111")
+            })
+        });
+
+        vault.upsertCaskAttributesBatch(updates);
+
+        IWhiskyCaskVault.LifecycleReport[] memory lifecycleBatch = new IWhiskyCaskVault.LifecycleReport[](
+            2
+        );
+        lifecycleBatch[0] = IWhiskyCaskVault.LifecycleReport({
+            caskId: caskId,
+            toState: IWhiskyCaskVault.CaskState.REGAUGED,
+            timestamp: 1_736_010_000,
+            gaugeProofGallons: 488e2,
+            gaugeWineGallons: 257e2,
+            gaugeProof: 1089
+        });
+        lifecycleBatch[1] = IWhiskyCaskVault.LifecycleReport({
+            caskId: caskId,
+            toState: IWhiskyCaskVault.CaskState.TRANSFER,
+            timestamp: 1_736_020_000,
+            gaugeProofGallons: 487e2,
+            gaugeWineGallons: 256e2,
+            gaugeProof: 1088
+        });
+
+        bytes memory lifecyclePayload = abi.encode(lifecycleBatch);
+        bytes memory lifecycleReport = abi.encode(
+            uint8(IWhiskyCaskVault.ReportType.LIFECYCLE),
+            lifecyclePayload
+        );
+        vault.onReport(lifecycleReport);
+
+        IWhiskyCaskVault.CaskAttributes memory stored = vault.getCaskAttributes(caskId);
+        require(stored.state == IWhiskyCaskVault.CaskState.TRANSFER, "batch lifecycle state mismatch");
+        require(
+            stored.lastGaugeProofGallons == 487e2,
+            "batch lifecycle proof gallons mismatch"
+        );
+        require(stored.lastGaugeWineGallons == 256e2, "batch lifecycle wine gallons mismatch");
+        require(stored.lastGaugeProof == 1088, "batch lifecycle proof mismatch");
+        require(stored.lastGaugeDate == 1_736_020_000, "batch lifecycle date mismatch");
+    }
+
     function testLifecycleZeroGaugeDoesNotOverwriteLastGaugeData() public {
         uint256 caskId = 202;
         IWhiskyCaskVault.CaskAttributesInput[] memory updates = new IWhiskyCaskVault.CaskAttributesInput[](
@@ -504,6 +569,108 @@ contract WhiskyCaskVaultTest {
             )
         );
         require(!success, "invalid lifecycle transition should revert");
+    }
+
+    function testLifecycleRejectsSelfTransition() public {
+        uint256 caskId = 333;
+        IWhiskyCaskVault.CaskAttributesInput[] memory updates = new IWhiskyCaskVault.CaskAttributesInput[](
+            1
+        );
+        updates[0] = IWhiskyCaskVault.CaskAttributesInput({
+            caskId: caskId,
+            attributes: IWhiskyCaskVault.CaskAttributes({
+                caskType: IWhiskyCaskVault.CaskType.BOURBON_BARREL,
+                spiritType: IWhiskyCaskVault.SpiritType.MALT,
+                fillDate: 1_670_000_000,
+                entryProofGallons: 500e2,
+                entryWineGallons: 260e2,
+                entryProof: 1120,
+                lastGaugeProofGallons: 480e2,
+                lastGaugeWineGallons: 250e2,
+                lastGaugeProof: 1110,
+                lastGaugeDate: 1_735_000_000,
+                lastGaugeMethod: IWhiskyCaskVault.GaugeMethod.WET_DIP,
+                estimatedProofGallons: 470e2,
+                state: IWhiskyCaskVault.CaskState.MATURATION,
+                warehouseCode: bytes16("WH-OR-333")
+            })
+        });
+
+        vault.upsertCaskAttributesBatch(updates);
+
+        bool success;
+        (success,) = address(vault).call(
+            abi.encodeWithSelector(
+                WhiskyCaskVault.recordLifecycleTransition.selector,
+                caskId,
+                IWhiskyCaskVault.CaskState.MATURATION,
+                1_736_000_700,
+                0,
+                0,
+                0
+            )
+        );
+        require(!success, "self transition should revert");
+    }
+
+    function testLifecycleCheckpointViewsReturnExpectedTimestamps() public {
+        IWhiskyCaskVault.CaskAttributesInput[] memory updates = new IWhiskyCaskVault.CaskAttributesInput[](
+            2
+        );
+        updates[0] = IWhiskyCaskVault.CaskAttributesInput({
+            caskId: 501,
+            attributes: IWhiskyCaskVault.CaskAttributes({
+                caskType: IWhiskyCaskVault.CaskType.BOURBON_BARREL,
+                spiritType: IWhiskyCaskVault.SpiritType.BOURBON,
+                fillDate: 1_672_531_200,
+                entryProofGallons: 512e2,
+                entryWineGallons: 270e2,
+                entryProof: 1100,
+                lastGaugeProofGallons: 490e2,
+                lastGaugeWineGallons: 258e2,
+                lastGaugeProof: 1090,
+                lastGaugeDate: 1_735_111_100,
+                lastGaugeMethod: IWhiskyCaskVault.GaugeMethod.WET_DIP,
+                estimatedProofGallons: 474e2,
+                state: IWhiskyCaskVault.CaskState.MATURATION,
+                warehouseCode: bytes16("WH-OR-501")
+            })
+        });
+        updates[1] = IWhiskyCaskVault.CaskAttributesInput({
+            caskId: 502,
+            attributes: IWhiskyCaskVault.CaskAttributes({
+                caskType: IWhiskyCaskVault.CaskType.SHERRY_BUTT,
+                spiritType: IWhiskyCaskVault.SpiritType.RYE,
+                fillDate: 1_672_531_200,
+                entryProofGallons: 512e2,
+                entryWineGallons: 270e2,
+                entryProof: 1100,
+                lastGaugeProofGallons: 490e2,
+                lastGaugeWineGallons: 258e2,
+                lastGaugeProof: 1090,
+                lastGaugeDate: 1_735_222_200,
+                lastGaugeMethod: IWhiskyCaskVault.GaugeMethod.WET_DIP,
+                estimatedProofGallons: 474e2,
+                state: IWhiskyCaskVault.CaskState.MATURATION,
+                warehouseCode: bytes16("WH-OR-502")
+            })
+        });
+
+        vault.upsertCaskAttributesBatch(updates);
+
+        require(vault.lastLifecycleTimestamp(501) == 1_735_111_100, "single checkpoint mismatch");
+        require(vault.lastLifecycleTimestamp(999) == 0, "missing cask checkpoint should be zero");
+
+        uint256[] memory caskIds = new uint256[](3);
+        caskIds[0] = 502;
+        caskIds[1] = 501;
+        caskIds[2] = 999;
+
+        uint256[] memory checkpoints = vault.lastLifecycleTimestamps(caskIds);
+        require(checkpoints.length == 3, "checkpoint length mismatch");
+        require(checkpoints[0] == 1_735_222_200, "batch checkpoint 0 mismatch");
+        require(checkpoints[1] == 1_735_111_100, "batch checkpoint 1 mismatch");
+        require(checkpoints[2] == 0, "batch checkpoint 2 mismatch");
     }
 
     function testGetCaskAttributesUnknownRevertsAndExistsFlagIsFalse() public view {

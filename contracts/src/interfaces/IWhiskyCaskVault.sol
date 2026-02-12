@@ -95,6 +95,13 @@ interface IWhiskyCaskVault {
 
     function caskExists(uint256 caskId) external view returns (bool);
 
+    function lastLifecycleTimestamp(uint256 caskId) external view returns (uint256);
+
+    function lastLifecycleTimestamps(uint256[] calldata caskIds)
+        external
+        view
+        returns (uint256[] memory);
+
     function latestPublicReserveAttestation()
         external
         view
