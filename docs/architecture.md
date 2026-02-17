@@ -1,39 +1,64 @@
-# Architecture (Day 1)
+# Architecture
 
-## Components
+## System Layers
 
-1. Warehouse API (mock, TTB-shaped data)
-2. Workflow layer (local simulation + CRE runtime entrypoints)
-3. Onchain vault contract skeleton (`onReport` consumer)
+1. Warehouse API (`api/`)
+2. CRE workflows (`workflows/`)
+3. Onchain report consumer (`contracts/src/WhiskyCaskVault.sol`)
 
-## Extension Points
+The API is the source of truth for cask facts and lifecycle events. CRE workflows fetch data, compute deterministic outputs under DON consensus, and submit encoded reports. The contract stores reserve attestations, cask attributes, and lifecycle checkpoints/events.
 
-- Adapter boundary for DRAMS SOAP/XML integration (`api/src/adapters/warehouse/`)
-- Attestation mode boundary (`public` vs `confidential`)
-- Optional reference valuation endpoint/module for downstream products
-- CRE workflow trigger/capability boundaries for privacy and product-specific workflows
+## Workflow Topology
 
-## Data Units
+- Proof of reserve (`workflows/proof-of-reserve/index.ts`)
+  - Trigger: cron
+  - Reads: `/inventory`, `totalMinted()`
+  - Writes: reserve attestation report
+- Physical attributes (`workflows/physical-attributes/index.ts`)
+  - Trigger: cron
+  - Reads: `/portfolio/summary`, `/casks/batch`
+  - Writes: cask batch report
+- Lifecycle webhook (`workflows/lifecycle-webhook/index.ts`)
+  - Trigger: HTTP
+  - Reads: trigger payload only
+  - Writes: lifecycle report
+- Lifecycle reconcile (`workflows/lifecycle-reconcile/index.ts`)
+  - Trigger: cron
+  - Reads: `/lifecycle/recent`, `lastLifecycleTimestamps(...)`
+  - Writes: lifecycle batch report
 
-All gauge records are tracked in TTB-native units:
+## Privacy Model
+
+Proof of reserve supports two attestation modes:
+
+- `public`: fetch via `HTTPClient`, publish counts and reserve ratio
+- `confidential`: fetch via `ConfidentialHTTPClient`, publish only `isFullyReserved` + timestamp + attestation hash
+
+Confidential mode prevents raw inventory count from being emitted in the report payload, contract storage, or contract event.
+
+## Shared Runtime
+
+`workflows/shared/cre-runtime.ts` is the workflow facade:
+
+- runtime-safe SDK loading and capability checks
+- deterministic `asOf` timestamp resolution (`resolveSnapshotAsOf`, `withAsOf`)
+- shared HTTP fetch helpers (`httpGetJson`)
+- EVM read helpers (`resolveTotalTokenSupply`, `resolveLastLifecycleTimestamps`)
+- report submission guardrails (`submitReport`)
+
+## Data Model
+
+TTB-native units are preserved end to end:
 
 - proof gallons (scaled 1e2 onchain)
 - wine gallons (scaled 1e2 onchain)
-- proof degrees (scaled 1e1 onchain)
+- proof (scaled 1e1 onchain)
 
-## Runtime Model
+Attestation hashes are bytes32 and validated before report encoding.
 
-- Local dev loop:
-  - API + `workflow.ts` simulation scripts
-  - deterministic outputs and low-friction debugging
-- CRE runtime loop:
-  - `index.ts` workflow entrypoints using `Runner`, triggers, HTTP/EVM capabilities, and `writeReport`
-  - cron workflows pass shared `asOf` timestamps to API reads for deterministic DON consensus
-  - webhook workflow uses trigger payload directly in CRE path (no side-effecting HTTP POST in node mode)
-  - report payloads encoded to match `WhiskyCaskVault.onReport` routing
+## Environment Model
 
-## Trust Model (Current)
+- Local simulation: `workflow.ts` files use plain `fetch` for fast development.
+- CRE execution: `index.ts` files are compiled to WASM and run via CRE runtime.
 
-- Data source is deterministic mock data shaped like regulated warehouse records.
-- CRE workflows attest and transport data; contract stores attestations and cask state.
-- Token economics and full custody/legal enforcement are out of Day-1 scope.
+Both paths share domain models and report encoders to keep output shape consistent.

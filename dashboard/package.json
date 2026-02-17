@@ -1,0 +1,26 @@
+{
+  "name": "whisky-cask-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "scripts": {
+    "dev": "npx -y node@20 node_modules/next/dist/bin/next dev",
+    "build": "npx -y node@20 node_modules/next/dist/bin/next build",
+    "start": "npx -y node@20 node_modules/next/dist/bin/next start",
+    "typecheck": "npx -y node@20 node_modules/typescript/bin/tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.5.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "viem": "2.40.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.9.1",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,9 +1,12 @@
 ﻿node_modules/
 .env
 .env.*
+!.env.example
 dist/
 coverage/
 *.log
+dashboard/.next/
+dashboard/tsconfig.tsbuildinfo
 api/data/portfolio.json
 contracts/out/
 contracts/cache/
@@ -11,4 +14,5 @@ contracts/broadcast/
 workflows/*/tmp.js
 workflows/*/tmp.wasm
 .desloppify/
+.audit/
 scorecard.png

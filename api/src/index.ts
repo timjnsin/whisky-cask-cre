@@ -1,5 +1,6 @@
 ﻿import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { z } from "zod";
 import { MockWarehouseAdapter } from "./adapters/warehouse/mockWarehouseAdapter.js";
 import { LifecycleValidationError, PortfolioStore } from "./services/portfolio.js";
@@ -48,6 +49,7 @@ async function bootstrap(): Promise<void> {
   const adapter = new MockWarehouseAdapter(store);
 
   const app = new Hono();
+  app.use("*", cors());
 
   app.get("/health", (c) =>
     c.json({

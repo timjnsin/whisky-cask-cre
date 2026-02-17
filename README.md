@@ -2,6 +2,9 @@
 
 CRE infrastructure that pipes legally mandated warehouse records onto a public blockchain — proof of reserve, per-cask physical attributes, and lifecycle provenance for tokenized whisky casks, with privacy-preserving attestation via Confidential HTTP.
 
+For judge-facing quick navigation, start with `SUBMISSION.md`.
+
+
 ## The Problem
 
 In 2025, Braeburn Whisky collapsed with $80 million in claimed cask assets. Thousands of investors couldn't verify whether their barrels existed. The same year, the BBC aired "Hunting the Whisky Bandits" — documenting a convicted fraudster who sold phantom casks to 213 victims across multiple shell companies. In Tasmania, an audit of Nant Distillery revealed 1,300 barrels that didn't exist, with the same cask sold to multiple buyers.
@@ -101,12 +104,28 @@ All workflows operate within CRE limits (max 5 HTTP calls, 10 EVM reads per exec
 
 Deterministic snapshot timestamps (`resolveSnapshotAsOf` + `?asOf=` query params) ensure all DON nodes evaluate the same data window for consensus.
 
+## Submission Map
+
+If you only open a few files, use these:
+
+- `README.md` (project narrative + runbook)
+- `contracts/src/WhiskyCaskVault.sol` (onchain report consumer)
+- `workflows/proof-of-reserve/index.ts` (PoR with public/confidential branching)
+- `workflows/shared/cre-runtime.ts` (CRE SDK facade + shared HTTP/EVM/report plumbing)
+- `api/src/index.ts` (warehouse API endpoints)
+- `dashboard/app/page.tsx` (mode-aware reserve dashboard)
+
+Supporting design docs are in `design/` as markdown only (large export artifacts removed for submission hygiene).
+
 ## Quick Start
 
 ```bash
 # Install dependencies and seed mock warehouse data
 npm install
 npm run seed
+
+# Optional: define API/workflow env vars
+cp .env.example .env
 
 # Start the warehouse API (serves 47 seeded casks)
 npm run dev:api
@@ -117,7 +136,14 @@ In a second terminal:
 ```bash
 # Run all 4 workflow simulations against the local API
 npm run simulate:all
+
+# Run the dashboard (new terminal)
+npm run dev:dashboard
 ```
+
+Proof-of-reserve staging is configured with `attestationMode: "confidential"` in `workflows/proof-of-reserve/config.staging.json` so CRE simulation demonstrates the private report path by default.
+
+Dashboard env vars are documented in `dashboard/.env.example`.
 
 To run through the CRE CLI (requires `cre` installed):
 
@@ -141,7 +167,7 @@ forge test -vvv
 
 | File | CRE Capabilities Used |
 |------|----------------------|
-| [workflows/proof-of-reserve/index.ts](workflows/proof-of-reserve/index.ts) | CronCapability, HTTPClient (`/inventory`), EVMClient (`totalMinted()` read + report write) |
+| [workflows/proof-of-reserve/index.ts](workflows/proof-of-reserve/index.ts) | CronCapability, HTTPClient/ConfidentialHTTPClient (`/inventory`, mode-dependent), EVMClient (`totalMinted()` read + report write) |
 | [workflows/physical-attributes/index.ts](workflows/physical-attributes/index.ts) | CronCapability, HTTPClient (`/portfolio/summary` + `/casks/batch`), report write |
 | [workflows/lifecycle-webhook/index.ts](workflows/lifecycle-webhook/index.ts) | HTTPCapability (webhook trigger), report write |
 | [workflows/lifecycle-reconcile/index.ts](workflows/lifecycle-reconcile/index.ts) | CronCapability, HTTPClient (`/lifecycle/recent`), EVMClient (`lastLifecycleTimestamps(...)` read), report write |
@@ -193,8 +219,18 @@ workflows/
   lifecycle-reconcile/index.ts     CRE runtime: daily fallback for missed events
   */workflow.ts                    Local simulation scripts (fetch-based, no CRE dependency)
   */config.staging.json            Local/staging configs (submitReports: false)
+  proof-of-reserve/config.staging.json  Staging demo default uses `attestationMode: confidential`
   */config.production.json         Production configs (Sepolia addresses TBD)
   */workflow.yaml                  CRE CLI workflow manifests
+
+dashboard/
+  app/page.tsx                     Reserve dashboard (confidential/public mode aware)
+  app/casks/page.tsx               Cask explorer (public mode only)
+  app/lifecycle/page.tsx           Lifecycle feed (public mode only)
+  components/                      UI building blocks (nav, metrics, logs, cask detail, lifecycle feed)
+  lib/contract.ts                  viem contract reads + attestation event log reads
+  lib/api.ts                       Typed warehouse API client
+  .env.example                     Dashboard runtime config template
 
 project.yaml                       CRE project settings (RPC endpoints)
 ```
@@ -204,6 +240,7 @@ project.yaml                       CRE project settings (RPC endpoints)
 - **CRE workflows**: TypeScript, `@chainlink/cre-sdk`, Bun
 - **Smart contract**: Solidity 0.8.24, Foundry
 - **Warehouse API**: TypeScript, Hono, `@hono/node-server`
+- **Dashboard**: Next.js 15 App Router, React, viem
 - **Chain**: Ethereum Sepolia
 - **Encoding**: `viem` for ABI encoding/decoding, `zod` for config validation
 

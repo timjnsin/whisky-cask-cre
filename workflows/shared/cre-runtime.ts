@@ -69,6 +69,35 @@ export interface CreSdkModule {
     capabilities: {
       CronCapability: new () => { trigger(config: unknown): unknown };
       HTTPCapability: new () => { trigger(config: unknown): unknown };
+      ConfidentialHTTPClient: new () => {
+        sendRequests(
+          runtime: unknown,
+          input: {
+            vaultDonSecrets?: Array<{
+              key: string;
+              namespace: string;
+              owner?: string;
+            }>;
+            input?: {
+              requests?: Array<{
+                url: string;
+                method: string;
+                body?: string;
+                headers?: string[];
+                publicTemplateValues?: Record<string, string>;
+                customCertBundle?: Uint8Array;
+              }>;
+            };
+          },
+        ): {
+          result(): {
+            responses: Array<{
+              statusCode: bigint;
+              body: Uint8Array;
+            }>;
+          };
+        };
+      };
       HTTPClient: new () => {
         sendRequest(
           runtime: unknown,
@@ -156,7 +185,13 @@ function assertCreSdkModule(module: unknown): asserts module is CreSdkModule {
   }
 
   const capabilities = cre.capabilities as Record<string, unknown>;
-  for (const cap of ["CronCapability", "HTTPCapability", "HTTPClient", "EVMClient"]) {
+  for (const cap of [
+    "CronCapability",
+    "HTTPCapability",
+    "ConfidentialHTTPClient",
+    "HTTPClient",
+    "EVMClient",
+  ]) {
     if (typeof capabilities[cap] !== "function") {
       throw new Error(`Invalid @chainlink/cre-sdk export: missing cre.capabilities.${cap}`);
     }
@@ -315,10 +350,42 @@ export function httpGetJson<T, TConfig extends { apiBaseUrl: string }>(
   path: string,
 ): T {
   const url = buildUrl(runtime.config.apiBaseUrl, path);
+  const useConfidential =
+    (runtime.config as { attestationMode?: string }).attestationMode === "confidential";
 
   const raw = runtime
     .runInNodeMode(
-      (nodeRuntime, requestUrl: string) => {
+      (nodeRuntime, requestUrl: string, confidential: boolean) => {
+        if (confidential) {
+          const confidentialHttpClient = new sdk.cre.capabilities.ConfidentialHTTPClient();
+          const confidentialResponse = confidentialHttpClient
+            .sendRequests(nodeRuntime, {
+              input: {
+                requests: [
+                  {
+                    url: requestUrl,
+                    method: "GET",
+                    headers: ["accept: application/json"],
+                  },
+                ],
+              },
+            })
+            .result();
+
+          const response = confidentialResponse.responses[0];
+          if (!response) {
+            throw new Error(`GET ${requestUrl} failed: confidential request returned no responses`);
+          }
+
+          const responseBody = sdk.text(response);
+          const statusCode = Number(response.statusCode);
+          if (!sdk.ok(response)) {
+            throw new Error(`GET ${requestUrl} failed: ${statusCode} ${responseBody.slice(0, 200)}`);
+          }
+
+          return responseBody;
+        }
+
         const httpClient = new sdk.cre.capabilities.HTTPClient();
         const response = httpClient
           .sendRequest(nodeRuntime, {
@@ -338,7 +405,7 @@ export function httpGetJson<T, TConfig extends { apiBaseUrl: string }>(
         return responseBody;
       },
       sdk.consensusIdenticalAggregation(),
-    )(url)
+    )(url, useConfidential)
     .result();
 
   return parseJson<T>(raw, `GET ${url}`);

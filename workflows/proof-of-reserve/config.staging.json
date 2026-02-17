@@ -4,6 +4,6 @@
   "chainSelector": "ethereum-sepolia",
   "tokensPerCask": 1000,
   "submitReports": false,
-  "attestationMode": "public",
+  "attestationMode": "confidential",
   "tokenSupplyUnits": 47000
 }
