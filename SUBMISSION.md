@@ -26,5 +26,5 @@ npm run dev:dashboard
 
 - Dashboard reads from API by default (`dashboard/.env.example`).
 - Optional onchain read path is enabled via `NEXT_PUBLIC_VAULT_ADDRESS` + Sepolia RPC env vars.
-- Dashboard scripts wrap `next` with `npx node@20`, so build/dev run consistently on this repo.
+- Use `npm run dev:dashboard` / `npm run build:dashboard` from repo root; these commands run the dashboard with Node 20 automatically.
 - Node version is pinned in `.nvmrc` and `dashboard/.nvmrc` (`20.20.0`).
