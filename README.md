@@ -1,99 +1,153 @@
-# Whisky Cask CRE: Privacy-Preserving Proof of Reserve for Physical Assets
+# Whisky Cask CRE
 
-CRE infrastructure that pipes legally mandated warehouse records onto a public blockchain — proof of reserve, per-cask physical attributes, and lifecycle provenance for tokenized whisky casks, with privacy-preserving attestation via Confidential HTTP.
+Bonded whisky casks are already an investable real-world asset. Whisky Cask CRE makes them verifiable, reserve-backed, and financeable onchain with Chainlink CRE.
 
-For judge-facing quick navigation, start with `SUBMISSION.md`.
+CRE infrastructure that pulls legally mandated warehouse records into a DON, reaches consensus on reserve and cask state, and writes verified reports to a Solidity contract on Sepolia. The project combines proof of reserve, per-cask physical attributes, and lifecycle provenance, with Confidential HTTP for privacy-preserving attestations.
 
+## Why This Matters
+
+Whisky is a genuinely interesting RWA category:
+
+- It already trades as an investment asset.
+- It lives in regulated custody.
+- Its physical state changes over time in measurable ways.
+- It is financeable, but the data infrastructure is still primitive.
+
+People buy and sell casks, brokers intermediate deals, warehouses hold inventory, and lenders are starting to look at cask-backed structures. But the records that prove a cask exists, where it sits, and how much spirit is still inside are usually trapped in warehouse systems, PDFs, spreadsheets, and paper delivery orders.
+
+That creates a serious verification gap. Investors can be shown a document, but they still cannot independently verify reserve coverage, physical state, or title history. The result is a market that is already valuable enough to matter, but still too opaque to safely bring online.
 
 ## The Problem
 
-In 2025, Braeburn Whisky collapsed with $80 million in claimed cask assets. Thousands of investors couldn't verify whether their barrels existed. The same year, the BBC aired "Hunting the Whisky Bandits" — documenting a convicted fraudster who sold phantom casks to 213 victims across multiple shell companies. In Tasmania, an audit of Nant Distillery revealed 1,300 barrels that didn't exist, with the same cask sold to multiple buyers.
+Recent whisky fraud cases made the failure mode obvious: investors were sold casks that could not be independently verified, and in some cases did not exist at all. This is not just a bad sales process. It is an infrastructure problem.
 
-This isn't a whisky problem. It's a structural problem. **There is no centralized ownership registry for whisky casks.** Each warehouse maintains its own ledger. No cross-referencing. No independent verification. No API. Investors receive PDFs, if they receive anything at all, and ownership transfers happen via paper Delivery Orders with no standard format.
-
-The irony: the underlying data is already regulated. In the US, bonded warehouses file monthly storage reports to the TTB (Alcohol and Tobacco Tax and Trade Bureau) and maintain per-barrel gauge records under federal law (27 CFR Part 19). The data that proves a cask exists, what's in it, and where it is — that data is legally mandated. It's just locked in warehouse management systems, inaccessible to anyone outside.
+There is no universal cask registry. Each bonded warehouse maintains its own ledger. Ownership transfers are not standardized. Gauge data is not easily accessible to investors or protocols. Meanwhile, the underlying source data is often already regulated. In the US, bonded warehouses maintain per-cask records and storage reports under TTB rules. The data exists, but it is not available in a form onchain finance can use.
 
 ## What We Built
 
-Four CRE workflows across three components — reserve attestation, physical attribute oracle, lifecycle provenance — each fetching warehouse data, reaching DON consensus, and writing verified reports to a Solidity contract on Sepolia.
+Whisky Cask CRE turns warehouse data into verifiable onchain state through four CRE workflows:
 
+1. Proof of reserve
+   Reads warehouse inventory, compares it to token supply, and publishes an attestation onchain.
+2. Physical attribute oracle
+   Publishes per-cask gauge data and modeled estimates for recently changed casks.
+3. Lifecycle webhook
+   Writes real-time cask lifecycle transitions from an external system into an immutable event trail.
+4. Lifecycle reconcile
+   Scans for recent lifecycle changes and backfills anything the webhook path missed.
+
+The output is a cask dataset that can actually support tokenization, reserve audits, provenance, and eventually lending or secondary market infrastructure.
+
+## Why Chainlink CRE
+
+This project is not using Chainlink as branding. CRE is the actual execution layer that makes the architecture viable.
+
+- Multiple DON nodes fetch and verify external warehouse data independently.
+- The workflows combine external APIs, deterministic transforms, and EVM reads and writes.
+- Confidential HTTP lets us prove reserve coverage without exposing raw inventory counts.
+- Cron and HTTP triggers let us support both scheduled attestations and real-time lifecycle updates.
+
+Without Chainlink CRE, this is either a centralized backend writing to a contract or a dashboard making unverifiable claims. The point of the project is to decentralize the reporting pipeline around a real-world data source that is commercially sensitive and operationally messy.
+
+## Architecture
+
+```text
+Warehouse API                Chainlink CRE                 Smart Contract
+-------------                -------------                 --------------
+
+GET /inventory        --->   DON nodes fetch, verify,     ReserveAttestation
+(count, proof gallons,       reach consensus, and         { physicalCaskCount,
+ attestation hash)           submit report                 totalTokenSupply,
+                                                            reserveRatio,
+                                                            attestationHash }
+
+GET /casks/batch      --->   DON consensus on per-cask    CaskAttributes[id]
+(gauge records,              attributes and estimates     { caskType, fillDate,
+ estimates)                                                   entryProofGallons,
+                                                              lastGaugeProofGallons,
+                                                              state, warehouseCode }
+
+Webhook payload       --->   DON consensus on lifecycle   LifecycleTransition event
+(regauge, transfer,          event payload                { caskId, fromState,
+ bottling ready, etc.)                                       toState, timestamp,
+                                                              gaugeProofGallons }
 ```
-Warehouse API                CRE (DON consensus)           Smart Contract
-─────────────                ───────────────────           ──────────────
 
-GET /inventory  ──────────>  N nodes fetch independently,  ReserveAttestation
-(cask count,                 verify, reach BFT consensus   { physicalCaskCount,
- proof gallons,              on identical data               totalTokenSupply,
- attestation hash)                                           reserveRatio,
-                                                             attestationHash }
+## Workflow Breakdown
 
-GET /casks/batch ─────────>  Consensus on per-cask         CaskAttributes[id]
-(gauge records,              attributes from warehouse     { caskType, fillDate,
- estimates)                  records                         entryProofGallons,
-                                                             lastGaugeProofGallons,
-                                                             state, warehouseCode }
+### 1. Proof of Reserve
 
-Webhook payload  ─────────>  Consensus on state            LifecycleTransition event
-(cask regauged,              transition event              { caskId, fromState,
- new gauge data)                                             toState, timestamp,
-                                                             gaugeProofGallons }
-```
+Runs on a cron. The workflow reads warehouse inventory, reads `totalMinted()` from the vault contract, computes reserve coverage, and submits an attestation. If a token issuer claims more casks than the warehouse reports, the reserve ratio drops below `1.0` and the mismatch is visible immediately.
 
-### 1. Proof of Reserve (hourly cron)
+In confidential mode, the raw inventory count is not posted onchain. The workflow publishes whether the system is fully reserved while keeping sensitive warehouse inventory data private.
 
-Fetches warehouse inventory count, reads `totalMinted()` from the contract, computes reserve ratio, writes attestation onchain. If a token issuer claims 47 casks but the warehouse reports 45, the reserve ratio drops below 1.0 and everyone can see it. In confidential mode, only a boolean `isFullyReserved` is published — the raw inventory count stays private.
+### 2. Physical Attribute Oracle
 
-### 2. Physical Attribute Oracle (daily cron)
+Runs on a daily cron. The workflow fetches per-cask gauge records and estimate inputs for recently changed casks, then writes a batch update to the contract. Core gauge fields map cleanly to warehouse-native measurements such as proof gallons, wine gallons, proof, gauge method, and gauge date.
 
-Fetches per-cask gauge records and angel's share estimates for recently changed casks. Writes batch updates to the contract. Core gauge fields map to TTB-required measurements under 27 CFR 19.618: proof gallons, wine gallons, proof, gauge method, gauge date. Any lending protocol or secondary market can read these attributes directly from the contract and build their own risk model — no need to trust ours.
+This means downstream applications do not have to trust our dashboard. They can read cask-level physical facts directly from the contract and price risk however they want.
 
-### 3. Lifecycle Provenance (webhook + daily fallback)
+### 3. Lifecycle Provenance
 
-Records every state transition as an immutable onchain event: `filled → maturation → regauged → transfer → bottling_ready → bottled`. Each transition carries gauge data when applicable. The webhook path handles real-time events with zero HTTP calls (data arrives in the trigger payload); a daily cron reconcile catches anything missed. The result is a verifiable lifecycle trail from fill to bottle.
+The webhook path records state transitions such as:
+
+`filled -> maturation -> regauged -> transfer -> bottling_ready -> bottled`
+
+Each transition can carry fresh gauge data when it exists. The webhook path handles real-time updates with zero HTTP reads because the data arrives in the trigger payload. A daily reconcile workflow catches anything that was missed and keeps the onchain lifecycle trail consistent.
+
+## Why Whisky Is the Hook
+
+This is the part I would lead with in a judging room: whisky is a weirdly good fit for an online RWA market.
+
+- It is already treated like an investment product.
+- Time changes the asset itself. Aging can improve value while evaporation reduces supply.
+- Warehouses already hold the source data needed for reserve checks and physical verification.
+- The asset is semi-fungible enough to support pooled ownership and structured products, but physical enough that provenance and custody still matter.
+
+That combination is rare. Most RWAs either have weak custody data, poor standardization, or no natural reason to live online. Whisky has a real market and a real verification problem, which is exactly where CRE is strongest.
 
 ## Why Privacy Matters
 
-A warehouse's aggregate inventory is commercially sensitive. It reveals total barrel count (purchasing power), acquisition patterns (supplier relationships), and inventory velocity (business health signals). No warehouse will pipe raw inventory data to a public blockchain.
+A warehouse may be willing to prove reserve coverage, but not willing to expose its full inventory position to the public. Raw barrel counts can reveal purchasing patterns, supplier relationships, inventory velocity, and broader business health.
 
-Confidential HTTP lets DON nodes fetch inventory data where the response payload is encrypted. Nodes reach consensus and compute "casks ≥ tokens: true/false" without the raw count appearing onchain or in node logs. The contract stores a boolean `isFullyReserved`, not the number. The warehouse participates because its competitive position isn't exposed. (Note: TTB tracks the proprietor via DSP number, not the beneficial token holder — privacy here protects the warehouse operator's business data, not investor anonymity.)
-
-Without this privacy layer, the system is architecturally correct but commercially undeployable.
-
-## Why Whisky
-
-Whisky is arguably the best-suited physical asset for tokenization:
-
-- **Anti-depreciation.** Aging *improves* the product. A barrel appreciates 13–22% CAGR from age 12 to 25. Name another physical asset where time increases value by design.
-- **Natural scarcity.** Angel's share (evaporation) removes 2–5% of volume per year. A 20-year cask has lost a third of its contents. Scarcity isn't manufactured — it's physics.
-- **Regulated custody.** Unlike gold in a vault, whisky sits in facilities regulated by federal law (TTB in the US, HMRC in the UK). Per-barrel records are legally mandated. Falsifying them is a criminal offense.
-- **Semi-fungible.** Unlike art or real estate, casks of the same distillery/age/type are substantially interchangeable within their cohort — suitable for pooled ownership and tokenization.
-- **Consumption floor.** Independent bottlers and blenders always need aged stock. Even in a downturn, someone wants to bottle your whisky. This creates a demand floor that pure investment assets lack.
-
-39 million barrels are maturing in warehouses worldwide — Kentucky alone assesses its aging inventory at $10 billion for tax purposes. Billions in cask transactions happen every year: barrel trade between distilleries, sourcing by non-distiller producers, independent bottler purchases, and retail investment sales. All tracked on paper. Scotland's Moveable Transactions Act (April 2025) created statutory pledges over whisky casks for the first time — lenders now have legal tools for cask-backed finance but no data infrastructure to verify collateral.
+Confidential HTTP solves that problem. DON nodes can fetch encrypted inventory data, compute the result, and publish the attestation without exposing the underlying payload onchain or in logs. That makes the design commercially plausible instead of just technically interesting.
 
 ## Data Honesty
 
-We use TTB-native units throughout: proof gallons (PG) and wine gallons (WG), not milliliters or ABV. PG = WG × (proof / 100). This is how warehouses actually measure and report.
+We use warehouse-native units throughout:
+
+- Proof gallons (PG)
+- Wine gallons (WG)
+- Proof
+- Gauge date
+- Gauge method
+
+`PG = WG x (proof / 100)`
 
 The data model has three explicit tiers:
 
 | Tier | What | Source | Example |
 |------|------|--------|---------|
-| 1: Verified facts | Warehouse/TTB records | 27 CFR 19.618 gauge records | Cask exists, fill date, entry proof gallons, last regauge |
-| 2: Computed estimates | Math on Tier 1 data | Angel's share decay model | Estimated current proof gallons, bottle yield |
-| 3: Market opinions | Models, comps | Reference only | Age-curve valuation (labeled as estimate, not price) |
+| 1: Verified facts | Warehouse and regulatory records | Gauge records | Cask exists, fill date, entry proof gallons, last regauge |
+| 2: Computed estimates | Deterministic math on tier 1 data | Angel's share model | Estimated current proof gallons, bottle yield |
+| 3: Market opinions | External comps or valuation models | Reference only | Age curve valuation |
 
-Tier 2 and 3 are clearly labeled. We never pass off a model output as a measurement.
+We label estimates as estimates. We do not present modeled outputs as if they were measured warehouse facts.
 
-## What This Is Not
+## What This Enables
 
-- **Not a valuation oracle.** We put verified physical facts onchain. Valuation is a model output, not a measurement, and we label it accordingly.
-- **Not trustless end-to-end.** The system trusts TTB-regulated warehouses to report accurately (falsifying federal records is a criminal offense). CRE decentralizes the *pipeline*, not the *source*.
-- **Not whisky-specific.** Whisky casks are the demo asset. The pattern — privacy-preserving proof of reserve for physically-held assets via CRE — generalizes to wine, precious metals, or any custodied commodity with regulated record-keeping. We demonstrate with US TTB units because the federal framework is the most explicit; the architecture applies equally to HMRC-regulated Scottish warehouses (litres of pure alcohol, bulk litres, WOWGR).
+If this pattern is deployed against a real warehouse integration, it unlocks infrastructure that is hard to build today:
+
+- Token reserve verification for cask-backed products
+- Onchain collateral monitoring for lenders
+- Provenance-aware secondary markets
+- Standardized cask data feeds for brokers, custodians, and marketplaces
+
+Whisky is the demo asset, but the pattern generalizes to other custodied commodities with regulated records.
 
 ## CRE Execution Budgets
 
-All workflows operate within CRE limits (max 5 HTTP calls, 10 EVM reads per execution):
+All workflows fit within CRE limits.
 
 | Workflow | Trigger | HTTP | EVM Read | EVM Write |
 |----------|---------|------|----------|-----------|
@@ -102,20 +156,20 @@ All workflows operate within CRE limits (max 5 HTTP calls, 10 EVM reads per exec
 | Lifecycle webhook | HTTP trigger | 0 | 0 | 1 |
 | Lifecycle reconcile | Cron (daily) | 1 | 1 | 1 |
 
-Deterministic snapshot timestamps (`resolveSnapshotAsOf` + `?asOf=` query params) ensure all DON nodes evaluate the same data window for consensus.
+Cron-based workflows use deterministic snapshot timestamps with `resolveSnapshotAsOf` and `?asOf=` query params so every DON node evaluates the same data window. The webhook workflow requires an explicit event timestamp in the trigger payload.
 
 ## Submission Map
 
 If you only open a few files, use these:
 
-- `README.md` (project narrative + runbook)
-- `contracts/src/WhiskyCaskVault.sol` (onchain report consumer)
-- `workflows/proof-of-reserve/index.ts` (PoR with public/confidential branching)
-- `workflows/shared/cre-runtime.ts` (CRE SDK facade + shared HTTP/EVM/report plumbing)
-- `api/src/index.ts` (warehouse API endpoints)
-- `dashboard/app/page.tsx` (mode-aware reserve dashboard)
+- `README.md` for the narrative and runbook
+- `contracts/src/WhiskyCaskVault.sol` for onchain report ingestion
+- `workflows/proof-of-reserve/index.ts` for public vs confidential proof of reserve logic
+- `workflows/shared/cre-runtime.ts` for the CRE integration layer
+- `api/src/index.ts` for the warehouse API
+- `dashboard/app/page.tsx` for the reserve dashboard
 
-Supporting design docs are in `design/` as markdown only (large export artifacts removed for submission hygiene).
+Supporting design docs live in `design/` as markdown only.
 
 ## Quick Start
 
@@ -124,10 +178,10 @@ Supporting design docs are in `design/` as markdown only (large export artifacts
 npm install
 npm run seed
 
-# Optional: define API/workflow env vars
+# Optional: define API and workflow env vars
 cp .env.example .env
 
-# Start the warehouse API (serves 47 seeded casks)
+# Start the warehouse API
 npm run dev:api
 ```
 
@@ -137,23 +191,23 @@ In a second terminal:
 # Run all 4 workflow simulations against the local API
 npm run simulate:all
 
-# Run the dashboard (new terminal)
+# Run the dashboard
 npm run dev:dashboard
 ```
 
-Proof-of-reserve staging is configured with `attestationMode: "confidential"` in `workflows/proof-of-reserve/config.staging.json` so CRE simulation demonstrates the private report path by default.
+Proof-of-reserve staging defaults to `attestationMode: "confidential"` in `workflows/proof-of-reserve/config.staging.json`, so the main simulation path demonstrates the privacy-preserving report flow.
 
 Dashboard env vars are documented in `dashboard/.env.example`.
 
-To run through the CRE CLI (requires `cre` installed):
+To run a workflow through the CRE CLI:
 
 ```bash
 cre workflow simulate workflows/proof-of-reserve -T staging-settings --non-interactive --trigger-index 0
 ```
 
-By default, local/staging configs run in safe simulation mode (`submitReports: false`) and do not broadcast onchain transactions.
+By default, local and staging configs run in simulation mode with `submitReports: false`, so they do not broadcast onchain transactions.
 
-To compile and test the Solidity contract (requires `forge`):
+To compile and test the Solidity contract:
 
 ```bash
 cd contracts
@@ -163,92 +217,92 @@ forge test -vvv
 
 ## Files That Use Chainlink CRE
 
-### CRE Workflow Entrypoints (compiled to WASM, executed on DON)
+### CRE workflow entrypoints
 
-| File | CRE Capabilities Used |
-|------|----------------------|
-| [workflows/proof-of-reserve/index.ts](workflows/proof-of-reserve/index.ts) | CronCapability, HTTPClient/ConfidentialHTTPClient (`/inventory`, mode-dependent), EVMClient (`totalMinted()` read + report write) |
-| [workflows/physical-attributes/index.ts](workflows/physical-attributes/index.ts) | CronCapability, HTTPClient (`/portfolio/summary` + `/casks/batch`), report write |
-| [workflows/lifecycle-webhook/index.ts](workflows/lifecycle-webhook/index.ts) | HTTPCapability (webhook trigger), report write |
-| [workflows/lifecycle-reconcile/index.ts](workflows/lifecycle-reconcile/index.ts) | CronCapability, HTTPClient (`/lifecycle/recent`), EVMClient (`lastLifecycleTimestamps(...)` read), report write |
+| File | CRE capabilities used |
+|------|------------------------|
+| [workflows/proof-of-reserve/index.ts](workflows/proof-of-reserve/index.ts) | CronCapability, HTTPClient or ConfidentialHTTPClient, EVMClient, report submission |
+| [workflows/physical-attributes/index.ts](workflows/physical-attributes/index.ts) | CronCapability, HTTPClient, report submission |
+| [workflows/lifecycle-webhook/index.ts](workflows/lifecycle-webhook/index.ts) | HTTPCapability, report submission |
+| [workflows/lifecycle-reconcile/index.ts](workflows/lifecycle-reconcile/index.ts) | CronCapability, HTTPClient, EVMClient, report submission |
 
-### Supporting CRE Infrastructure
+### Supporting CRE infrastructure
 
 | File | Role |
 |------|------|
-| [workflows/shared/cre-runtime.ts](workflows/shared/cre-runtime.ts) | CRE SDK facade: typed runtime, HTTP, EVM, report submission |
+| [workflows/shared/cre-runtime.ts](workflows/shared/cre-runtime.ts) | CRE SDK facade for typed runtime, HTTP, EVM, and report submission |
 | [workflows/shared/cre-sdk.ts](workflows/shared/cre-sdk.ts) | Type-only CRE SDK binding |
-| [workflows/shared/report-encoding.ts](workflows/shared/report-encoding.ts) | ABI encoding for all 4 report types, matching Solidity structs |
+| [workflows/shared/report-encoding.ts](workflows/shared/report-encoding.ts) | ABI encoding for all report types |
 | [workflows/shared/contract-mapping.ts](workflows/shared/contract-mapping.ts) | API-to-contract type transforms with exhaustive enum mappings |
-| [workflows/\*/workflow.yaml](workflows/) | CRE CLI workflow manifests (cron + HTTP triggers) |
-| [project.yaml](project.yaml) | Project-level CRE settings (RPC endpoints, chain selectors) |
+| [workflows/*/workflow.yaml](workflows/) | CRE CLI workflow manifests |
+| [project.yaml](project.yaml) | Project-level CRE settings |
 
-### Smart Contract (CRE Report Receiver)
+### Smart contract receiver
 
-| File | CRE Integration |
-|------|----------------|
-| [contracts/src/WhiskyCaskVault.sol](contracts/src/WhiskyCaskVault.sol) | `onReport(bytes)` receiver, `keystoneForwarder` ACL, report type dispatch |
-| [contracts/src/interfaces/IWhiskyCaskVault.sol](contracts/src/interfaces/IWhiskyCaskVault.sol) | `ReportType` enum, report payload structs |
-| [contracts/test/WhiskyCaskVault.t.sol](contracts/test/WhiskyCaskVault.t.sol) | 20 tests: ACL, report routing, lifecycle state machine, pause control |
+| File | CRE integration |
+|------|-----------------|
+| [contracts/src/WhiskyCaskVault.sol](contracts/src/WhiskyCaskVault.sol) | `onReport(bytes)` receiver, `keystoneForwarder` ACL, report dispatch |
+| [contracts/src/interfaces/IWhiskyCaskVault.sol](contracts/src/interfaces/IWhiskyCaskVault.sol) | `ReportType` enum and report payload structs |
+| [contracts/test/WhiskyCaskVault.t.sol](contracts/test/WhiskyCaskVault.t.sol) | Contract tests for ACL, report routing, lifecycle rules, and pause control |
 
 ## Project Structure
 
-```
+```text
 contracts/
-  src/WhiskyCaskVault.sol          Onchain report consumer (onReport routing by ReportType)
+  src/WhiskyCaskVault.sol              Onchain report consumer
   src/interfaces/IWhiskyCaskVault.sol  Enums, structs, interface
-  test/WhiskyCaskVault.t.sol       Foundry tests (20 tests)
-  script/Deploy.s.sol              Sepolia deployment script
+  test/WhiskyCaskVault.t.sol           Foundry tests
+  script/Deploy.s.sol                  Sepolia deployment script
 
 api/
-  src/index.ts                     Hono server (11 endpoints)
-  src/domain/types.ts              Shared TypeScript types (TTB-native units)
-  src/services/portfolio.ts        Portfolio store with Map index, batch, lifecycle
-  src/services/seed.ts             Deterministic 47-cask portfolio generator
-  src/services/estimate.ts         Angel's share estimation model
-  src/services/attestation.ts      Inventory attestation hash (keccak256)
-  src/adapters/warehouse/          WarehouseAdapter interface + mock implementation
+  src/index.ts                         Hono server
+  src/domain/types.ts                  Shared TypeScript types
+  src/services/portfolio.ts            Portfolio store, batch logic, lifecycle logic
+  src/services/seed.ts                 Deterministic 47-cask portfolio generator
+  src/services/estimate.ts             Angel's share estimation model
+  src/services/attestation.ts          Inventory attestation hash
+  src/adapters/warehouse/              Warehouse adapter interface and mock implementation
 
 workflows/
-  shared/cre-runtime.ts            CRE SDK facade (typed runtime, HTTP, EVM, report submission)
-  shared/report-encoding.ts        ABI encoding matching Solidity structs exactly
-  shared/contract-mapping.ts       API-to-contract type transforms (exhaustive enum mappings)
-  proof-of-reserve/index.ts        CRE runtime: reserve attestation
-  physical-attributes/index.ts     CRE runtime: batch cask attribute updates
-  lifecycle-webhook/index.ts       CRE runtime: webhook-triggered lifecycle events
-  lifecycle-reconcile/index.ts     CRE runtime: daily fallback for missed events
-  */workflow.ts                    Local simulation scripts (fetch-based, no CRE dependency)
-  */config.staging.json            Local/staging configs (submitReports: false)
-  proof-of-reserve/config.staging.json  Staging demo default uses `attestationMode: confidential`
-  */config.production.json         Production configs (Sepolia addresses TBD)
-  */workflow.yaml                  CRE CLI workflow manifests
+  shared/cre-runtime.ts                CRE runtime facade
+  shared/report-encoding.ts            ABI encoding matching Solidity structs
+  shared/contract-mapping.ts           API-to-contract type transforms
+  proof-of-reserve/index.ts            Proof-of-reserve workflow
+  physical-attributes/index.ts         Physical attributes workflow
+  lifecycle-webhook/index.ts           Webhook-triggered lifecycle workflow
+  lifecycle-reconcile/index.ts         Daily lifecycle reconcile workflow
+  */workflow.ts                        Local simulation scripts
+  */config.staging.json                Local and staging configs
+  */config.production.json             Production configs
+  */workflow.yaml                      CRE CLI workflow manifests
 
 dashboard/
-  app/page.tsx                     Reserve dashboard (confidential/public mode aware)
-  app/casks/page.tsx               Cask explorer (public mode only)
-  app/lifecycle/page.tsx           Lifecycle feed (public mode only)
-  components/                      UI building blocks (nav, metrics, logs, cask detail, lifecycle feed)
-  lib/contract.ts                  viem contract reads + attestation event log reads
-  lib/api.ts                       Typed warehouse API client
-  .env.example                     Dashboard runtime config template
+  app/page.tsx                         Reserve dashboard
+  app/casks/page.tsx                   Cask explorer
+  app/lifecycle/page.tsx               Lifecycle feed
+  components/                          UI building blocks
+  lib/contract.ts                      viem contract reads and attestation event reads
+  lib/api.ts                           Typed warehouse API client
+  .env.example                         Dashboard runtime config template
 
-project.yaml                       CRE project settings (RPC endpoints)
+project.yaml                           CRE project settings
 ```
 
 ## Tech Stack
 
-- **CRE workflows**: TypeScript, `@chainlink/cre-sdk`, Bun
-- **Smart contract**: Solidity 0.8.24, Foundry
-- **Warehouse API**: TypeScript, Hono, `@hono/node-server`
-- **Dashboard**: Next.js 15 App Router, React, viem
-- **Chain**: Ethereum Sepolia
-- **Encoding**: `viem` for ABI encoding/decoding, `zod` for config validation
+- CRE workflows: TypeScript, `@chainlink/cre-sdk`, Bun
+- Smart contract: Solidity 0.8.24, Foundry
+- Warehouse API: TypeScript, Hono
+- Dashboard: Next.js 15 App Router, React, viem
+- Chain: Ethereum Sepolia
+- Encoding and validation: `viem`, `zod`
 
-## Known Limitations (Current Demo)
+## Known Limitations
 
-- **Lifecycle reconcile is bounded per run.** The daily fallback now submits a deterministic batch, but throughput is capped by `scanLimit` and `maxReportsPerRun`, so large backlogs may need multiple runs.
-- **Lifecycle dedup is still semantic-best-effort.** Contract checks now block stale timestamps and self-transitions, but upstream systems can still emit different valid transition sequences for the same business action.
+- Lifecycle reconcile is intentionally bounded per run, so very large backlogs may require multiple executions.
+- The project demonstrates reserve verification and provenance, not full legal title transfer.
+- The current repo uses a mock warehouse API. The production path is to connect the same workflows to a real warehouse or custodian system.
 
 ## Hackathon Context
 
-Built for the [Chainlink Convergence Hackathon](https://chain.link/hackathon) (Feb 6 – Mar 1, 2026).
+Built for the [Chainlink Convergence Hackathon](https://chain.link/hackathon) (Feb 6 - Mar 1, 2026).
