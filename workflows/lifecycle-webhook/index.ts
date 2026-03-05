@@ -3,7 +3,6 @@ import { mapLifecycleEventToContractReport } from "../shared/contract-mapping.js
 import {
   baseCreConfigSchema,
   loadCreSdk,
-  resolveSnapshotAsOf,
   sendErrorToCre,
   submitReport,
   type CreRuntime,
@@ -17,7 +16,7 @@ const lifecycleWebhookPayloadSchema = z.object({
   gaugeProofGallons: z.number().nonnegative().optional(),
   gaugeWineGallons: z.number().nonnegative().optional(),
   gaugeProof: z.number().nonnegative().optional(),
-  timestamp: z.string().datetime().optional(),
+  timestamp: z.string().datetime(),
 });
 
 const authorizedKeySchema = z.object({
@@ -78,12 +77,11 @@ function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
       }
 
       const incomingPayload = parseIncomingPayload(triggerPayload);
-      const defaultTimestamp = resolveSnapshotAsOf(runtime, triggerPayload);
 
       const lifecycleReport = mapLifecycleEventToContractReport({
         caskId: incomingPayload.caskId,
         toState: incomingPayload.toState,
-        timestamp: incomingPayload.timestamp ?? defaultTimestamp,
+        timestamp: incomingPayload.timestamp,
         gaugeProofGallons: incomingPayload.gaugeProofGallons ?? 0,
         gaugeWineGallons: incomingPayload.gaugeWineGallons ?? 0,
         gaugeProof: incomingPayload.gaugeProof ?? 0,
@@ -100,7 +98,7 @@ function initWorkflow(sdk: CreSdkModule, config: WorkflowConfig) {
         workflow: "lifecycle-webhook",
         caskId: incomingPayload.caskId,
         toState: incomingPayload.toState,
-        timestamp: incomingPayload.timestamp ?? defaultTimestamp,
+        timestamp: incomingPayload.timestamp,
         reportBytes: encodedReport.length / 2 - 1,
         ...submission,
       };

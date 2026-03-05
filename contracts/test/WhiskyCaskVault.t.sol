@@ -351,6 +351,72 @@ contract WhiskyCaskVaultTest {
         require(afterTransition.lastGaugeDate == 1_725_811_200, "gauge date should be unchanged");
     }
 
+    function testStaleBatchCannotRollbackLifecycleManagedFields() public {
+        uint256 caskId = 212;
+        IWhiskyCaskVault.CaskAttributesInput[] memory updates = new IWhiskyCaskVault.CaskAttributesInput[](
+            1
+        );
+        updates[0] = IWhiskyCaskVault.CaskAttributesInput({
+            caskId: caskId,
+            attributes: IWhiskyCaskVault.CaskAttributes({
+                caskType: IWhiskyCaskVault.CaskType.HOGSHEAD,
+                spiritType: IWhiskyCaskVault.SpiritType.RYE,
+                fillDate: 1_640_995_200,
+                entryProofGallons: 500e2,
+                entryWineGallons: 265e2,
+                entryProof: 1120,
+                lastGaugeProofGallons: 455e2,
+                lastGaugeWineGallons: 241e2,
+                lastGaugeProof: 1090,
+                lastGaugeDate: 1_725_811_200,
+                lastGaugeMethod: IWhiskyCaskVault.GaugeMethod.WET_DIP,
+                estimatedProofGallons: 449e2,
+                state: IWhiskyCaskVault.CaskState.MATURATION,
+                warehouseCode: bytes16("WH-TN-004")
+            })
+        });
+
+        vault.upsertCaskAttributesBatch(updates);
+        vault.recordLifecycleTransition(
+            caskId,
+            IWhiskyCaskVault.CaskState.REGAUGED,
+            1_736_000_900,
+            447e2,
+            238e2,
+            1086
+        );
+
+        updates[0] = IWhiskyCaskVault.CaskAttributesInput({
+            caskId: caskId,
+            attributes: IWhiskyCaskVault.CaskAttributes({
+                caskType: IWhiskyCaskVault.CaskType.HOGSHEAD,
+                spiritType: IWhiskyCaskVault.SpiritType.RYE,
+                fillDate: 1_640_995_200,
+                entryProofGallons: 500e2,
+                entryWineGallons: 265e2,
+                entryProof: 1120,
+                lastGaugeProofGallons: 430e2,
+                lastGaugeWineGallons: 230e2,
+                lastGaugeProof: 1078,
+                lastGaugeDate: 1_725_811_200,
+                lastGaugeMethod: IWhiskyCaskVault.GaugeMethod.WET_DIP,
+                estimatedProofGallons: 430e2,
+                state: IWhiskyCaskVault.CaskState.MATURATION,
+                warehouseCode: bytes16("WH-TN-004")
+            })
+        });
+
+        vault.upsertCaskAttributesBatch(updates);
+
+        IWhiskyCaskVault.CaskAttributes memory stored = vault.getCaskAttributes(caskId);
+        require(stored.state == IWhiskyCaskVault.CaskState.REGAUGED, "state should remain lifecycle-derived");
+        require(stored.lastGaugeProofGallons == 447e2, "proof gallons should remain lifecycle-derived");
+        require(stored.lastGaugeWineGallons == 238e2, "wine gallons should remain lifecycle-derived");
+        require(stored.lastGaugeProof == 1086, "proof should remain lifecycle-derived");
+        require(stored.lastGaugeDate == 1_736_000_900, "gauge date should remain lifecycle-derived");
+        require(stored.estimatedProofGallons == 430e2, "estimated proof gallons should refresh");
+    }
+
     function testLifecycleTransitionEmitsEvent() public {
         uint256 caskId = 222;
         IWhiskyCaskVault.CaskAttributesInput[] memory updates = new IWhiskyCaskVault.CaskAttributesInput[](

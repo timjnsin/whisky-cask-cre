@@ -51,6 +51,29 @@ function maxTimestamp(events: LifecycleEvent[]): number {
   return events.reduce((max, event) => Math.max(max, timestampMs(event.timestamp)), 0);
 }
 
+function hasGaugeData(event: LifecycleEvent): boolean {
+  return event.gaugeProofGallons > 0 || event.gaugeWineGallons > 0 || event.gaugeProof > 0;
+}
+
+function inferGaugeMethod(
+  cask: CaskRecord,
+  event: LifecycleEvent,
+): GaugeRecordResponse["lastGaugeMethod"] {
+  if (cask.lastGauge.date === event.timestamp) {
+    return cask.lastGauge.method;
+  }
+
+  if (event.reason === "transfer") {
+    return "transfer";
+  }
+
+  if (event.reason === "bottling") {
+    return "disgorge";
+  }
+
+  return "wet_dip";
+}
+
 function isValidLifecycleTransition(fromState: CaskRecord["state"], toState: CaskRecord["state"]): boolean {
   if (fromState === "bottled") return false;
   if (fromState === toState) return false;
@@ -123,6 +146,48 @@ export class PortfolioStore {
     return this.getAllCasks().filter((cask) => cask.state !== "bottled");
   }
 
+  private materializeCaskAsOf(cask: CaskRecord, asOf: string): CaskRecord | undefined {
+    const asOfMs = timestampMs(asOf);
+    if (timestampMs(cask.fillDate) > asOfMs) {
+      return undefined;
+    }
+
+    const lifecycle = sortLifecycle(cask.lifecycle).filter((event) => timestampMs(event.timestamp) <= asOfMs);
+    let lastGauge = { ...cask.entryGauge };
+
+    for (const event of lifecycle) {
+      if (event.reason === "fill" || !hasGaugeData(event)) {
+        continue;
+      }
+
+      lastGauge = {
+        proofGallons: event.gaugeProofGallons,
+        wineGallons: event.gaugeWineGallons,
+        proof: event.gaugeProof,
+        date: event.timestamp,
+        method: inferGaugeMethod(cask, event),
+      };
+    }
+
+    return {
+      ...cask,
+      state: lifecycle.length > 0 ? lifecycle[lifecycle.length - 1].toState : "filled",
+      lastGauge,
+      lifecycle,
+      updatedAt: lifecycle.length > 0 ? lifecycle[lifecycle.length - 1].timestamp : cask.fillDate,
+    };
+  }
+
+  private getAllCasksAsOf(asOf: string): CaskRecord[] {
+    return this.getAllCasks()
+      .map((cask) => this.materializeCaskAsOf(cask, asOf))
+      .filter((cask): cask is CaskRecord => cask !== undefined);
+  }
+
+  private getActiveCasksAsOf(asOf: string): CaskRecord[] {
+    return this.getAllCasksAsOf(asOf).filter((cask) => cask.state !== "bottled");
+  }
+
   getGaugeRecord(caskId: number): GaugeRecordResponse | undefined {
     const cask = this.getCask(caskId);
     return cask ? toGaugeRecord(cask) : undefined;
@@ -130,7 +195,8 @@ export class PortfolioStore {
 
   getEstimate(caskId: number, asOf: string) {
     const cask = this.getCask(caskId);
-    return cask ? estimateCask(cask, asOf) : undefined;
+    const materialized = cask ? this.materializeCaskAsOf(cask, asOf) : undefined;
+    return materialized ? estimateCask(materialized, asOf) : undefined;
   }
 
   getLifecycle(caskId: number): LifecycleEvent[] | undefined {
@@ -140,20 +206,23 @@ export class PortfolioStore {
 
   getCaskBatch(ids: number[] | undefined, limit: number | undefined, asOf: string): CaskBatchResponse {
     const maxItems = Math.max(1, Math.min(50, limit ?? 20));
+    const allSnapshots = this.getAllCasksAsOf(asOf);
+    const activeSnapshots = this.getActiveCasksAsOf(asOf);
 
     const sourceIds =
       ids && ids.length > 0
         ? [...new Set(ids)]
-        : this.getActiveCasks()
+        : activeSnapshots
             .map((cask) => cask.caskId)
             .sort((a, b) => a - b)
             .slice(0, maxItems);
 
     const selectedIds = sourceIds.slice(0, maxItems);
+    const snapshotById = new Map(allSnapshots.map((cask) => [cask.caskId, cask]));
 
     const items = selectedIds
       .map((caskId) => {
-        const cask = this.getCask(caskId);
+        const cask = snapshotById.get(caskId);
         if (!cask) return undefined;
         return {
           gaugeRecord: toGaugeRecord(cask),
@@ -188,7 +257,7 @@ export class PortfolioStore {
   }
 
   getInventory(asOf: string) {
-    const active = this.getActiveCasks();
+    const active = this.getActiveCasksAsOf(asOf);
     const totalProofGallons = round2(
       active.reduce((sum, cask) => sum + cask.lastGauge.proofGallons, 0),
     );
@@ -203,7 +272,7 @@ export class PortfolioStore {
   }
 
   getSummary(asOf: string): PortfolioSummaryResponse {
-    const casks = this.getAllCasks();
+    const casks = this.getAllCasksAsOf(asOf);
     const asOfMs = timestampMs(asOf);
 
     const ageBuckets = {
@@ -230,8 +299,8 @@ export class PortfolioStore {
     const recentlyChangedCaskIds = casks
       .filter((cask) => timestampMs(cask.updatedAt) <= asOfMs)
       .filter((cask) => timestampMs(cask.updatedAt) >= asOfMs - 1_000 * 60 * 60 * 24 * 120)
+      .sort((a, b) => timestampMs(b.updatedAt) - timestampMs(a.updatedAt) || a.caskId - b.caskId)
       .map((cask) => cask.caskId)
-      .sort((a, b) => a - b)
       .slice(0, 20);
 
     return {

@@ -210,10 +210,36 @@ contract WhiskyCaskVault is IWhiskyCaskVault {
         uint256 length = updates.length;
         for (uint256 i = 0; i < length; i++) {
             uint256 caskId = updates[i].caskId;
-            caskAttributesById[caskId] = updates[i].attributes;
-            caskExistsById[caskId] = true;
-            if (updates[i].attributes.lastGaugeDate > lastLifecycleTimestampByCaskId[caskId]) {
-                lastLifecycleTimestampByCaskId[caskId] = updates[i].attributes.lastGaugeDate;
+            CaskAttributes memory incoming = updates[i].attributes;
+
+            if (!caskExistsById[caskId]) {
+                caskAttributesById[caskId] = incoming;
+                caskExistsById[caskId] = true;
+            } else {
+                CaskAttributes storage current = caskAttributesById[caskId];
+                uint256 lifecycleCheckpoint = lastLifecycleTimestampByCaskId[caskId];
+
+                current.caskType = incoming.caskType;
+                current.spiritType = incoming.spiritType;
+                current.fillDate = incoming.fillDate;
+                current.entryProofGallons = incoming.entryProofGallons;
+                current.entryWineGallons = incoming.entryWineGallons;
+                current.entryProof = incoming.entryProof;
+                current.estimatedProofGallons = incoming.estimatedProofGallons;
+                current.warehouseCode = incoming.warehouseCode;
+
+                if (incoming.lastGaugeDate >= lifecycleCheckpoint) {
+                    current.lastGaugeProofGallons = incoming.lastGaugeProofGallons;
+                    current.lastGaugeWineGallons = incoming.lastGaugeWineGallons;
+                    current.lastGaugeProof = incoming.lastGaugeProof;
+                    current.lastGaugeDate = incoming.lastGaugeDate;
+                    current.lastGaugeMethod = incoming.lastGaugeMethod;
+                    current.state = incoming.state;
+                }
+            }
+
+            if (incoming.lastGaugeDate > lastLifecycleTimestampByCaskId[caskId]) {
+                lastLifecycleTimestampByCaskId[caskId] = incoming.lastGaugeDate;
             }
             emit CaskAttributesUpdated(caskId, block.timestamp);
         }
