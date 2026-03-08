@@ -1,4 +1,4 @@
-﻿# External Warehouse API Design
+# External Warehouse API Design
 
 > Source of truth: [FULL_MAP.md](FULL_MAP.md) section 7
 

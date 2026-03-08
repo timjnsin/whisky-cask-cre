@@ -1,4 +1,4 @@
-﻿import { reserveRatio, reserveStatus } from "../../api/src/services/attestation.js";
+import { reserveRatio, reserveStatus } from "../../api/src/services/attestation.js";
 import { InventoryResponse } from "../../api/src/domain/types.js";
 import { AttestationMode } from "./config.js";
 

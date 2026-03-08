@@ -1,4 +1,4 @@
-﻿import { WarehouseAdapter } from "./adapter.js";
+import { WarehouseAdapter } from "./adapter.js";
 
 export class DramsSoapAdapter implements WarehouseAdapter {
   constructor(private readonly endpoint: string) {}

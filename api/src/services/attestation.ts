@@ -1,4 +1,4 @@
-﻿import { keccak256, toHex } from "viem";
+import { keccak256, toHex } from "viem";
 import { InventoryResponse } from "../domain/types.js";
 
 export function computeInventoryAttestationHash(payload: {

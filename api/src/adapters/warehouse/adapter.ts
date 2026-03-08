@@ -1,4 +1,4 @@
-﻿import {
+import {
   CaskBatchResponse,
   EstimateResponse,
   GaugeRecordResponse,

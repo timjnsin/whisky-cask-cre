@@ -185,7 +185,13 @@ cp .env.example .env
 npm run dev:api
 ```
 
-In a second terminal:
+For the fastest end-to-end local demo, use one command:
+
+```bash
+npm run demo:all
+```
+
+If you want the manual path instead, use a second terminal:
 
 ```bash
 # Run all 4 workflow simulations against the local API

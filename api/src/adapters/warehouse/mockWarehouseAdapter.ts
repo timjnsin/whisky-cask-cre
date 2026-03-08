@@ -1,4 +1,4 @@
-﻿import { WarehouseAdapter } from "./adapter.js";
+import { WarehouseAdapter } from "./adapter.js";
 import { PortfolioStore } from "../../services/portfolio.js";
 import { buildReferenceValuation } from "../../services/referenceValuation.js";
 import { MarketDataResponse } from "../../domain/types.js";

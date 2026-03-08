@@ -1,4 +1,4 @@
-﻿# Financial Model -> API Mapping
+# Financial Model -> API Mapping
 
 > Source of truth for architecture: [FULL_MAP.md](FULL_MAP.md)
 

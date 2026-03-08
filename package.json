@@ -12,6 +12,7 @@
     "dev:dashboard": "npm --prefix dashboard run dev",
     "build:dashboard": "npm --prefix dashboard run build",
     "typecheck:dashboard": "npm --prefix dashboard run typecheck",
+    "demo:all": "tsx demo/run-all.ts",
     "simulate:por": "tsx workflows/proof-of-reserve/workflow.ts",
     "simulate:por:bun": "bun workflows/proof-of-reserve/workflow.ts",
     "simulate:attributes": "tsx workflows/physical-attributes/workflow.ts",

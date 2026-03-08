@@ -1,4 +1,4 @@
-﻿import { CaskRecord, EstimateResponse } from "../domain/types.js";
+import { CaskRecord, EstimateResponse } from "../domain/types.js";
 import { daysBetween, round2 } from "../domain/units.js";
 
 const BOTTLES_PER_PROOF_GALLON_AT_46_ABV = 5.48;

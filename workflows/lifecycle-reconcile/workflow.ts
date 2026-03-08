@@ -1,4 +1,4 @@
-﻿import { RecentLifecycleResponse } from "../../api/src/domain/types.js";
+import { RecentLifecycleResponse } from "../../api/src/domain/types.js";
 import { loadConfig } from "../shared/config.js";
 import { getCreSdkStatus } from "../shared/cre-sdk.js";
 import { getJson } from "../shared/http.js";

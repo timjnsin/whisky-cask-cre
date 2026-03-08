@@ -1,4 +1,4 @@
-﻿import { CaskRecord, ReferenceValuationResponse } from "../domain/types.js";
+import { CaskRecord, ReferenceValuationResponse } from "../domain/types.js";
 import { monthsBetween, round2 } from "../domain/units.js";
 
 export function buildReferenceValuation(cask: CaskRecord, asOf: string): ReferenceValuationResponse {

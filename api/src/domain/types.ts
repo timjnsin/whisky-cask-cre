@@ -1,4 +1,4 @@
-﻿export const TOKENS_PER_CASK_DEFAULT = 1000;
+export const TOKENS_PER_CASK_DEFAULT = 1000;
 
 export type SpiritType = "bourbon" | "rye" | "malt" | "wheat";
 

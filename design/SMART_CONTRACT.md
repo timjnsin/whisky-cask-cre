@@ -1,4 +1,4 @@
-﻿# Smart Contract Design - WhiskyCaskVault
+# Smart Contract Design - WhiskyCaskVault
 
 > Source of truth: [FULL_MAP.md](FULL_MAP.md) section 6
 

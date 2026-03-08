@@ -1,4 +1,4 @@
-﻿// Type-only linkage keeps workflow scripts portable while preserving CRE SDK integration points.
+// Type-only linkage keeps workflow scripts portable while preserving CRE SDK integration points.
 export type CreSdkTypeBinding = typeof import("@chainlink/cre-sdk");
 
 export function getCreSdkStatus(): {

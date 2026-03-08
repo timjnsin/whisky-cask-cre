@@ -1,4 +1,4 @@
-﻿# Contracts
+# Contracts
 
 Day-1 contract scope is storage and report consumption for:
 
