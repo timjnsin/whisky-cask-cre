@@ -35,5 +35,4 @@ async function main() {
 main().catch((error) => {
   console.error("proof-of-reserve workflow failed", error);
   process.exit(1);
-  return;
 });

@@ -23,5 +23,4 @@ async function main() {
 main().catch((error) => {
   console.error("lifecycle-reconcile workflow failed", error);
   process.exit(1);
-  return;
 });

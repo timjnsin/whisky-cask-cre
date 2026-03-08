@@ -66,5 +66,4 @@ async function main() {
 main().catch((error) => {
   console.error("physical-attributes workflow failed", error);
   process.exit(1);
-  return;
 });

@@ -97,7 +97,7 @@ Each transition can carry fresh gauge data when it exists. The webhook path hand
 
 ## Why Whisky Is the Hook
 
-This is the part I would lead with in a judging room: whisky is a weirdly good fit for an online RWA market.
+Whisky is a weirdly good fit for onchain RWA infrastructure.
 
 - It is already treated like an investment product.
 - Time changes the asset itself. Aging can improve value while evaporation reduces supply.

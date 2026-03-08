@@ -169,5 +169,4 @@ async function bootstrap(): Promise<void> {
 bootstrap().catch((error) => {
   console.error("Failed to boot API", error);
   process.exit(1);
-  return;
 });

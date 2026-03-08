@@ -13,6 +13,7 @@ contracts/cache/
 contracts/broadcast/
 workflows/*/tmp.js
 workflows/*/tmp.wasm
+*.mp3
 .desloppify/
 .audit/
 scorecard.png

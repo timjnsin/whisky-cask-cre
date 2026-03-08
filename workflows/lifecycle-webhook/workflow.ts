@@ -127,5 +127,4 @@ async function main() {
 main().catch((error) => {
   console.error("lifecycle-webhook workflow failed", error);
   process.exit(1);
-  return;
 });
